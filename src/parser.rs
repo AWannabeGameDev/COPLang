@@ -2,67 +2,67 @@ use std::{borrow::Borrow, iter::Peekable};
 
 use crate::lexer::*;
 
-#[derive(Copy, Clone, Debug)]
-pub enum UnaryOp
+// In the future add a variant for custom functions
+#[derive(Copy, Clone)]
+pub enum FnName
 {
-    Negate,
-    Not
+    Negate, Not,
+    Add, Sub, Mul, Div,
+    EqualTo, NotEqualTo,
+    Greater, Lesser, GreaterEq, LesserEq,
+    And, Or,
+    DiscardLeft,
+    Ternary
 }
 
-fn unary_op(tok: Token) -> UnaryOp
+fn unary_op(tok: Token) -> FnName
 {
     assert!(matches!(tok, Token::Minus | Token::Bang));
         
     match tok
     {
-        Token::Minus => UnaryOp::Negate,
-        Token::Bang => UnaryOp::Not,
+        Token::Minus => FnName::Negate,
+        Token::Bang => FnName::Not,
         _ => panic!()
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum BinaryOp
+fn binary_op(tok: Token) -> FnName
 {
-    Add, Sub, Mul, Div,
-    Greater, Lesser, GreaterEq, LesserEq,
-    DiscardLeft
-}
-
-
-fn binary_op(tok: Token) -> BinaryOp
-{
-    assert!(matches!(tok, Token::Plus | Token::Minus | Token::Star | Token::ForSlash | 
+    assert!(matches!(tok, Token::Plus | Token::Minus | Token::Star | Token::ForSlash |
+        Token::And | Token::Or |
+        Token::EqEq | Token::BangEq |
         Token::Greater | Token::Lesser | Token::GreaterEq | Token::LesserEq | Token::Comma));
 
     match tok
     {
-        Token::Plus => BinaryOp::Add,
-        Token::Minus => BinaryOp::Sub,
-        Token::Star => BinaryOp::Mul,
-        Token::ForSlash => BinaryOp::Div,
-        Token::Greater => BinaryOp::Greater,
-        Token::Lesser => BinaryOp::Lesser,
-        Token::GreaterEq => BinaryOp::GreaterEq,
-        Token::LesserEq => BinaryOp::LesserEq,
-        Token::Comma => BinaryOp::DiscardLeft,
+        Token::Plus => FnName::Add,
+        Token::Minus => FnName::Sub,
+        Token::Star => FnName::Mul,
+        Token::ForSlash => FnName::Div,
+        Token::Greater => FnName::Greater,
+        Token::Lesser => FnName::Lesser,
+        Token::GreaterEq => FnName::GreaterEq,
+        Token::LesserEq => FnName::LesserEq,
+        Token::Comma => FnName::DiscardLeft,
+        Token::And => FnName::And,
+        Token::Or => FnName::Or,
+        Token::EqEq => FnName::EqualTo,
+        Token::BangEq => FnName::NotEqualTo,
         _ => panic!()
     }
 }
 
-#[derive(Debug)]
 pub enum Expr
 {
-    Unary(UnaryOp, Box<Expr>),
-    Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Literal(Literal),
-    EOF
+    Call(FnName, Vec<Expr>),
+    Empty
 }
 
 pub struct Parser<'a>
 {
-    pub ast: Option<Box<Expr>>,
+    pub ast: Expr,
     pub errors: Vec<ParseError<'a>>
 }
 
@@ -90,7 +90,7 @@ macro_rules! binary_op
 {
     ($name:ident, $next:ident, $pat:pat) =>
     {
-        fn $name<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Box<Expr>, ParseError<'a>>
+        fn $name<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Expr, ParseError<'a>>
         where
             It: Iterator<Item = T>,
             T: Borrow<Token<'a>>
@@ -121,7 +121,7 @@ macro_rules! binary_op
                             self.errors.push(err);
                         }
 
-                        ret = Box::new(Expr::Binary(ret, binary_op(op), next?));
+                        ret = Expr::Call(binary_op(op), vec![ret, next?]);
                     },
                     _ => {break;}
                 }
@@ -136,7 +136,7 @@ impl<'a> Parser<'a>
 {
     pub fn new() -> Self
     {
-        Parser {ast: None, errors: Vec::new()}
+        Parser {ast: Expr::Empty, errors: Vec::new()}
     }
 
     pub fn parse<It, T>(&mut self, tok_iter: &mut Peekable<It>)
@@ -147,12 +147,12 @@ impl<'a> Parser<'a>
         let expr = self.parse_expr(tok_iter);
         match expr
         {
-            Ok(res) => self.ast = Some(res),
-            Err(err) => self.errors.push(err),
+            Ok(res) => if !matches!(res, Expr::Empty) {self.ast = res},
+            Err(err) => self.errors.push(err)
         }
     }
 
-    fn parse_expr<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Box<Expr>, ParseError<'a>>
+    fn parse_expr<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Expr, ParseError<'a>>
     where
         It: Iterator<Item = T>,
         T: Borrow<Token<'a>>
@@ -167,12 +167,12 @@ impl<'a> Parser<'a>
 
     binary_op!(parse_comma, parse_ternary, Token::Comma);
 
-    fn parse_ternary<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Box<Expr>, ParseError<'a>>
+    fn parse_ternary<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Expr, ParseError<'a>>
     where
         It: Iterator<Item = T>,
         T: Borrow<Token<'a>>
     {
-        let mut ret = self.parse_eq(tok_iter)?;
+        let mut ret = self.parse_logic(tok_iter)?;
 
         while let Some(token) = tok_iter.peek().map(|x| x.borrow())
         {
@@ -188,7 +188,7 @@ impl<'a> Parser<'a>
                         Some(Token::Colon) =>
                         {
                             tok_iter.next();
-                            ret = Box::new(Expr::Ternary(ret, if_branch, self.parse_ternary(tok_iter)?));
+                            ret = Expr::Call(FnName::Ternary, vec![ret, if_branch, self.parse_ternary(tok_iter)?]);
                             break;
                         },
                         Some(token) => {return Err(ParseError::UnexpectedToken(*token))},
@@ -202,30 +202,32 @@ impl<'a> Parser<'a>
         Ok(ret)
     }
 
+    binary_op!(parse_logic, parse_eq, Token::And | Token::Or);
     binary_op!(parse_eq, parse_relation, Token::EqEq | Token::BangEq);
     binary_op!(parse_relation, parse_term, Token::Greater | Token::Lesser | Token::GreaterEq | Token::LesserEq);
     binary_op!(parse_term, parse_factor, Token::Plus | Token::Minus);
     binary_op!(parse_factor, parse_unary, Token::Star | Token::ForSlash);
 
-    fn parse_unary<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Box<Expr>, ParseError<'a>>
+    fn parse_unary<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Expr, ParseError<'a>>
     where
         It: Iterator<Item = T>,
         T: Borrow<Token<'a>>
     {
         match tok_iter.peek().map(|x| x.borrow())
         {
-            Some(token @ Token::Minus) => 
+            Some(token @ (Token::Minus | Token::Bang)) => 
             {
                 let token = *token;
                 tok_iter.next();
-                Ok(Box::new(Expr::Unary(unary_op(token), self.parse_unary(tok_iter)?)))
+                Ok(Expr::Call(unary_op(token), vec![self.parse_unary(tok_iter)?]))
             },
             Some(_) => self.parse_final(tok_iter),
-            None => Ok(Box::new(Expr::EOF))
+            None => Ok(Expr::Empty)
         }
     }
 
-    fn parse_final<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Box<Expr>, ParseError<'a>>
+    // In the future, add parsing for identifiers and function calls
+    fn parse_final<It, T>(&mut self, tok_iter: &mut Peekable<It>) -> Result<Expr, ParseError<'a>>
     where
         It: Iterator<Item = T>,
         T: Borrow<Token<'a>>
@@ -252,7 +254,7 @@ impl<'a> Parser<'a>
             {
                 let x = *x;
                 tok_iter.next();
-                Ok(Box::new(Expr::Literal(x)))
+                Ok(Expr::Literal(x))
             },
             Some(op @ all_binary!()) =>
             {
@@ -264,7 +266,7 @@ impl<'a> Parser<'a>
             },
             None => 
             {
-                Ok(Box::new(Expr::EOF))
+                Ok(Expr::Empty)
             }
         }
     }

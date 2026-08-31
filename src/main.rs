@@ -5,11 +5,11 @@ use logos::Logos;
 mod lexer;
 mod parser;
 mod displays;
-mod type_checker;
+mod resolver;
 
 use lexer::*;
 use parser::*;
-use type_checker::*;
+use resolver::*;
 
 fn main()
 {
@@ -52,11 +52,22 @@ fn main()
     if parser.errors.len() > 0
     {
         for err in parser.errors {println!("Parse error: {}", err);}
-        println!("Panic mode AST: {}", parser.ast.unwrap_or(Box::new(Expr::EOF)));
+        println!("Panic mode AST: {}", parser.ast);
         return;
     }
 
-    println!("Successfully parsed. AST: {}", parser.ast.unwrap());
+    println!("Successfully parsed. AST: {}", parser.ast);
+
+    let mut resolver = Resolver::new();
+    resolver.check(&parser.ast);
+    if resolver.errors.len() > 0
+    {
+        for err in resolver.errors {println!("Resolution error: {}", err);}
+        println!("Panic mode AST: {}", resolver.ast);
+        return;
+    }
+
+    println!("Successfully resolved. AST: {}", resolver.ast);
 
     return;
 }

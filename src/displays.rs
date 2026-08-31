@@ -53,42 +53,43 @@ impl<'a> fmt::Display for Token<'a>
     }
 }
 
-impl fmt::Display for UnaryOp {
+impl fmt::Display for FnName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Negate => write!(f, "-"),
-            Self::Not => write!(f, "!"),
-        }
+        let op = match self {
+            FnName::Negate => "-",
+            FnName::Not => "!",
+            FnName::DiscardLeft => ",",
+            FnName::Add => "+",
+            FnName::Sub => "-",
+            FnName::Mul => "*",
+            FnName::Div => "/",
+            FnName::Greater => ">",
+            FnName::Lesser => "<",
+            FnName::GreaterEq => ">=",
+            FnName::LesserEq => "<=",
+            FnName::And => "&&",
+            FnName::Or => "||",
+            FnName::Ternary => "?:",
+            FnName::EqualTo => "==",
+            FnName::NotEqualTo => "!=",
+        };
+        write!(f, "{op}")
     }
 }
 
-impl fmt::Display for BinaryOp {
+impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Add => write!(f, "+"),
-            Self::Sub => write!(f, "-"),
-            Self::Mul => write!(f, "*"),
-            Self::Div => write!(f, "/"),
-            Self::Greater => write!(f, ">"),
-            Self::Lesser => write!(f, "<"), // naming this 'Lesser' instead of 'Less' is a choice, but I respect it XD
-            Self::GreaterEq => write!(f, ">="),
-            Self::LesserEq => write!(f, "<="),
-            Self::DiscardLeft => write!(f, ","),
-        }
-    }
-}
-
-impl fmt::Display for Expr
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result 
-    {
-        match self 
-        {
-            Expr::Unary(op, right) => write!(f, "({} {right})", op),
-            Expr::Binary(left, op, right) => write!(f, "({left} {} {right})", op),
-            Expr::Ternary(cond, true_expr, false_expr) => write!(f, "({cond} ? {true_expr} : {false_expr})"),
             Expr::Literal(lit) => write!(f, "{lit}"),
-            Expr::EOF => write!(f, "EOF"),
+            Expr::Empty => write!(f, "()"), // or whatever represents an empty node in your lang
+            Expr::Call(op, args) => {
+                // Formatting as (operator arg1 arg2) 
+                write!(f, "({op}")?;
+                for arg in args {
+                    write!(f, " {arg}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -110,6 +111,63 @@ impl<'a> fmt::Display for ParseError<'a> {
             {
                 write!(f, "Missing left operand for {}", op)
             }
+        }
+    }
+}
+
+impl fmt::Display for ExprType
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            ExprType::Int => write!(f, "Int"),
+            ExprType::Float => write!(f, "Float"),
+            ExprType::Bool => write!(f, "Bool"),
+            ExprType::Unit => write!(f, "Unit"),
+        }
+    }
+}
+
+impl fmt::Display for HalfResExpr
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            HalfResExpr::Literal(lit) => write!(f, "{}", lit),
+            HalfResExpr::Call(fn_name, args) =>
+            {
+                write!(f, "{}(", fn_name)?;
+                for (i, arg) in args.iter().enumerate()
+                {
+                    if i > 0 {write!(f, ", ")?;}
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ")")
+            },
+            HalfResExpr::Empty => write!(f, "<empty>"),
+        }
+    }
+}
+
+impl fmt::Display for ResExpr
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        // Formats like a proper typed AST: (5 + 3 : Int)
+        write!(f, "({}:{})", self.expr, self.typ)
+    }
+}
+
+impl fmt::Display for TypeError
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            TypeError::ArgCountMismatch(name) => write!(f, "Argument count mismatch for function '{}'", name),
+            TypeError::ArgTypeMismatch(name) => write!(f, "Argument type mismatch for function '{}'", name),
         }
     }
 }

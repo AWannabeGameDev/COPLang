@@ -41,8 +41,8 @@ pub enum Token<'a> {
     #[token("<=")] LesserEq,
 
     // Keywords
-    #[token("and")] And, 
-    #[token("or")] Or, 
+    #[token("&&")] And, 
+    #[token("||")] Or, 
     #[token("print")] Print, 
     #[token("compt")] Compt, 
     #[token("if")] If, 
