@@ -1,0 +1,9 @@
+COM -> TERN(, TERN)*
+TERN -> LOG ? TERN : TERN | LOG
+LOG -> EQ((&& | ||) EQ)*
+EQ -> REL((!= | ==) REL)*
+REL -> TERM((> | < | >= | <=) TERM)*
+TERM -> FACT((+ | -) FACT)*
+FACT -> UN((* | /) UN)*
+UN -> (! | -)UN | GRP
+GRP -> (COM) | literal
