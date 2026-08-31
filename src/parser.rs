@@ -203,8 +203,8 @@ impl<'a> Parser<'a>
     }
 
     binary_op!(parse_logic, parse_eq, Token::And | Token::Or);
-    binary_op!(parse_eq, parse_relation, Token::EqEq | Token::BangEq);
-    binary_op!(parse_relation, parse_term, Token::Greater | Token::Lesser | Token::GreaterEq | Token::LesserEq);
+    binary_op!(parse_eq, parse_ineq, Token::EqEq | Token::BangEq);
+    binary_op!(parse_ineq, parse_term, Token::Greater | Token::Lesser | Token::GreaterEq | Token::LesserEq);
     binary_op!(parse_term, parse_factor, Token::Plus | Token::Minus);
     binary_op!(parse_factor, parse_unary, Token::Star | Token::ForSlash);
 

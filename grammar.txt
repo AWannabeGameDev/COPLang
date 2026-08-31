@@ -1,9 +1,14 @@
+PROG -> (STMT;)*
+
+STMT -> (ENTT iden = COM | COM);
+ENTT -> [iden] // Temporarily supporting only singleton entities
+
 COM -> TERN(, TERN)*
 TERN -> LOG ? TERN : TERN | LOG
-LOG -> EQ((&& | ||) EQ)*
-EQ -> REL((!= | ==) REL)*
-REL -> TERM((> | < | >= | <=) TERM)*
-TERM -> FACT((+ | -) FACT)*
+LOG -> EQ((&& | \|\|) EQ)*
+EQ -> INEQ((!= | ==) INEQ)*
+INEQ -> ADD((> | < | >= | <=) ADD)*
+ADD -> FACT((+ | -) FACT)*
 FACT -> UN((* | /) UN)*
 UN -> (! | -)UN | GRP
-GRP -> (COM) | literal
+GRP -> \(COM\) | literal | iden | iden\(\) | iden\(TERN(, TERN)*\)
