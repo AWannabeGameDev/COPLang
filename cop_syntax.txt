@@ -1,0 +1,59 @@
+-> Components
+
+    ```
+    compt C3
+    {
+        C1 c1;
+        C2 c2;
+    }
+    ```
+
+    A component is distinct from the components it is composed of. So, C3 cannot be used in contexts where C2 or C1 is required.
+
+    You cannot declare component variables on their own. They only become actual data as part of an entity.
+
+-> Component arrays
+
+
+
+-> Basic data types
+
+    These are also just components.
+    - Signed integers `Int`
+    - Floats `Float`
+    - Bools `Bool`
+
+    Their defaults are all 0. Initialization syntax is: [type] {[value]}.
+
+    See Functions for operators.
+
+-> Entities
+
+    Entity types are declared as `[C1, C2, ...]`. All components listed must be unique, and the order does not matter. Type names can be aliased as `alias new_name = [C1, C2, ...]`. The empty entity type also exists: `[]`.
+
+    Entity literals are of the form `[C1 {a {init}, ...}, ...]` and are of the type `[C1, ...]`. Once again, all listed components must be unique and the order does not mattter. Here, `a` is a field of `C1`, and `init` is one of the following: (a) a literal if `a` is a basic component, (b) an entity identifier/literal that contains the component of type `a`, (c) the same syntax recursively if `a` is an aggregate component. In (b), the value of `a` is the value of that component in the specified entity. Omitting the braces for a component defaults it, but omitting the component itself changes the type of the literal. Additionally, for aggregate components, you need to skip a field entirely to default it.
+
+    A new entity may be declared in the following format: [entity-type] [identifer] = [entity identifier/literal]; Reassigning is similar: [identifier] = [entity identifier/literal]; In both cases, the component set of the entity on the RHS must be a superset of that of the entity on the LHS.
+
+    You can access a subentity like this: [identity].[subentity type]. For expressions that are singleton entities containing an aggregate component, you have to access the fields without the square brackets (since square brackets are only for extracting subentities). However, using such an expression will promote it to a singleton entity.
+
+    When you assign an entity to another entity, they both refer to the same component data. Using the subentity syntax for modifying an entity modifies the data for any other identifier holding the same reference. However, reasssigning an entity altogether will just change what that identifiers refers to (allocating new data if it is reassigned to an entity literal), without touching the previous data. For ease of use, you can write [identifier].[...] to modify in-place all of the data of an entity.
+
+-> Control flow is same as C.
+
+-> Functions
+
+    All functions take and return entities only. This works because of the superset rule for assigning entities as described above.
+
+    Function definition:
+    ```
+    [C1, ...] foo([A1, ...] a, [B1, ...] b, ...)
+    {
+        // body
+        return some_ent;
+    }
+    ```
+
+    Functions with no return at the end implicitly return the empty entity.
+
+    Operators are also functions with `op` followed by the operator being the function name. The singleton entities composed of basic components have the usual operators implicitly defined.

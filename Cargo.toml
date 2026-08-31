@@ -1,0 +1,8 @@
+[package]
+name = "inter1"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+itertools = "0.15.0"
+logos = "0.16.1"

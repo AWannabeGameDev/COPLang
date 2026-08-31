@@ -1,0 +1,7 @@
+//[Int] x = [Int {5}];
+//[Int] y = [Int {6}];
+//[Int] add = x + y;
+//[Int] sub = x - y;
+//print add;
+//print sub;
+(5 + + 5, false)
