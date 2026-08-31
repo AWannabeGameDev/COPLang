@@ -171,3 +171,26 @@ impl fmt::Display for TypeError
         }
     }
 }
+
+impl fmt::Display for ExprResult
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            ExprResult::Literal(x) => write!(f, "{}", x),
+            ExprResult::Unit => write!(f, "()"),
+        }
+    }
+}
+
+impl fmt::Display for RuntimeError
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            RuntimeError::DivByZero(name) => write!(f, "Division by zero in args to function '{}'", name),
+        }
+    }
+}

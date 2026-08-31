@@ -6,10 +6,12 @@ mod lexer;
 mod parser;
 mod displays;
 mod resolver;
+mod tree_walker;
 
 use lexer::*;
 use parser::*;
 use resolver::*;
+use tree_walker::*;
 
 fn main()
 {
@@ -68,6 +70,12 @@ fn main()
     }
 
     println!("Successfully resolved. AST: {}", resolver.ast);
+    
+    match interpret(&resolver.ast)
+    {
+        Ok(x) => println!("Interpreter: {x}"),
+        Err(err) => println!("Runtime error: {err}"),
+    }
 
     return;
 }

@@ -83,7 +83,7 @@ impl Resolver
 
                 self.resolve_fn(*f, res_args)
             },
-            Expr::Empty => panic!()
+            Expr::Empty => unreachable!()
         }
     }
 

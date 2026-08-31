@@ -23,7 +23,7 @@ fn unary_op(tok: Token) -> FnName
     {
         Token::Minus => FnName::Negate,
         Token::Bang => FnName::Not,
-        _ => panic!()
+        _ => unreachable!()
     }
 }
 
@@ -49,7 +49,7 @@ fn binary_op(tok: Token) -> FnName
         Token::Or => FnName::Or,
         Token::EqEq => FnName::EqualTo,
         Token::BangEq => FnName::NotEqualTo,
-        _ => panic!()
+        _ => unreachable!()
     }
 }
 
