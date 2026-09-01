@@ -1,17 +1,17 @@
-use std::fs;
-use std::env;
-use logos::Logos;
-
 mod lexer;
 mod parser;
 mod displays;
 mod resolver;
 mod tree_walker;
 
+use std::fs;
+use std::env;
+use logos::Logos;
+
 use lexer::*;
 use parser::*;
-use resolver::*;
-use tree_walker::*;
+// use resolver::*;
+// use tree_walker::*;
 
 fn main()
 {
@@ -42,6 +42,7 @@ fn main()
             }
         }
     ).collect();
+    tokens.push(Token::EOF);
 
     if lex_errs.len() > 0
     {
@@ -60,22 +61,22 @@ fn main()
 
     println!("Successfully parsed. AST: {}", parser.ast);
 
-    let mut resolver = Resolver::new();
-    resolver.check(&parser.ast);
-    if resolver.errors.len() > 0
-    {
-        for err in resolver.errors {println!("Resolution error: {}", err);}
-        println!("Panic mode AST: {}", resolver.ast);
-        return;
-    }
+    // let mut resolver = Resolver::new();
+    // resolver.check(&parser.ast);
+    // if resolver.errors.len() > 0
+    // {
+    //     for err in resolver.errors {println!("Resolution error: {}", err);}
+    //     println!("Panic mode AST: {}", resolver.ast);
+    //     return;
+    // }
 
-    println!("Successfully resolved. AST: {}", resolver.ast);
+    // println!("Successfully resolved. AST: {}", resolver.ast);
     
-    match interpret(&resolver.ast)
-    {
-        Ok(x) => println!("Interpreter: {x}"),
-        Err(err) => println!("Runtime error: {err}"),
-    }
+    // match interpret(&resolver.ast)
+    // {
+    //     Ok(x) => println!("Interpreter: {x}"),
+    //     Err(err) => println!("Runtime error: {err}"),
+    // }
 
     return;
 }

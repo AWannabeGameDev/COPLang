@@ -10,7 +10,10 @@ pub enum Literal {
 #[derive(Logos, PartialEq, Debug, Copy, Clone)]
 #[logos(error = LexerError)]
 #[logos(skip(r"[ \t\n\f]+|//[^\n]*", allow_greedy = true))]
-pub enum Token<'a> {
+pub enum Token<'a> 
+{
+    EOF,
+
     // Punctuation
     #[token("[")] LeftSqr, 
     #[token("]")] RightSqr, 
@@ -39,10 +42,13 @@ pub enum Token<'a> {
     #[token(">=")] GreaterEq, 
     #[token("<")] Lesser, 
     #[token("<=")] LesserEq,
-
-    // Keywords
     #[token("&&")] And, 
-    #[token("||")] Or, 
+    #[token("||")] Or,
+
+    // Keywords 
+    #[token("Int")] Int,
+    #[token("Float")] Float,
+    #[token("Bool")] Bool,
     #[token("print")] Print, 
     #[token("compt")] Compt, 
     #[token("if")] If, 
