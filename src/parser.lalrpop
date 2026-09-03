@@ -1,0 +1,142 @@
+use crate::lexer::*;
+use crate::ast::*;
+
+grammar<'a>;
+
+extern 
+{
+    type Location = usize;
+    type Error = LexerError; // From lexer.rs
+
+    enum Token<'a> 
+    {
+        "[" => Token::LeftSqr,
+        "]" => Token::RightSqr,
+        "{" => Token::LeftBrace,
+        "}" => Token::RightBrace,
+        "(" => Token::LeftParen,
+        ")" => Token::RightParen,
+        ";" => Token::Semicolon,
+        ":" => Token::Colon,
+        "," => Token::Comma,
+        "." => Token::Dot,
+        "?" => Token::Question,
+
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "/" => Token::ForSlash,
+        "*" => Token::Star,
+
+        "=" => Token::Eq,
+        "==" => Token::EqEq,
+        "!" => Token::Bang,
+        "!=" => Token::BangEq,
+        ">" => Token::Greater,
+        ">=" => Token::GreaterEq,
+        "<" => Token::Lesser,
+        "<=" => Token::LesserEq,
+        "&&" => Token::And,
+        "||" => Token::Or,
+
+        "Int" => Token::Int,
+        "Float" => Token::Float,
+        "Bool" => Token::Bool,
+        "print" => Token::Print,
+        "compt" => Token::Compt,
+        "if" => Token::If,
+        "else" => Token::Else,
+        "while" => Token::While,
+        "for" => Token::For,
+        "entt" => Token::Entt,
+
+        "iden" => Token::Identifier(<&'a [u8]>),
+        "literal" => Token::Literal(<Literal>),
+    }
+}
+
+pub PROG: AST<'a> =
+{
+    <stmts:STMT*> => AST(stmts)
+}
+
+STMT: Stmt<'a> =
+{
+    "entt" <id:"iden"> ":" <typ:ENTT> "=" <expr:ASSN> ";" => Stmt::Decl(typ, id, expr),
+    <expr:ASSN> ";" => Stmt::Expr(expr)
+}
+
+ENTT: EnttType =
+{
+    <c:COMPT> => EnttType(vec![c])
+}
+
+COMPT: ComptType =
+{
+    "Int" => ComptType::Int,
+    "Float" => ComptType::Float,
+    "Bool" => ComptType::Bool,
+}
+
+ASSN: Expr<'a> =
+{
+    <l:TERN> "=" <r:ASSN> => Expr::Call(FnName::Assign, vec![l, r]),
+    <e:TERN> => e
+}
+
+TERN: Expr<'a> =
+{
+    <p:LOG> "?" <i:TERN> ":" <e:TERN> => Expr::Call(FnName::Ternary, vec![p, i, e]),
+    <e:LOG> => e
+}
+
+LOG: Expr<'a> =
+{
+    <l:LOG> "&&" <r:EQ> => Expr::Call(FnName::And, vec![l, r]),
+    <l:LOG> "||" <r:EQ> => Expr::Call(FnName::Or, vec![l, r]),
+    <e:EQ> => e
+}
+
+EQ: Expr<'a> =
+{
+    <l:EQ> "==" <r:INEQ> => Expr::Call(FnName::EqualTo, vec![l, r]),
+    <l:EQ> "!=" <r:INEQ> => Expr::Call(FnName::NotEqualTo, vec![l, r]),
+    <e:INEQ> => e
+}
+
+INEQ: Expr<'a> =
+{
+    <l:INEQ> ">" <r:ADD> => Expr::Call(FnName::Greater, vec![l, r]),
+    <l:INEQ> "<" <r:ADD> => Expr::Call(FnName::Lesser, vec![l, r]),
+    <l:INEQ> ">=" <r:ADD> => Expr::Call(FnName::GreaterEq, vec![l, r]),
+    <l:INEQ> "<=" <r:ADD> => Expr::Call(FnName::LesserEq, vec![l, r]),
+    <e:ADD> => e
+}
+
+ADD: Expr<'a> =
+{
+    <l:ADD> "+" <r:FACT> => Expr::Call(FnName::Add, vec![l, r]),
+    <l:ADD> "-" <r:FACT> => Expr::Call(FnName::Sub, vec![l, r]),
+    <e:FACT> => e
+}
+
+FACT: Expr<'a> =
+{
+    <l:FACT> "*" <r:UN> => Expr::Call(FnName::Mul, vec![l, r]),
+    <l:FACT> "/" <r:UN> => Expr::Call(FnName::Div, vec![l, r]),
+    <e:UN> => e
+}
+
+UN: Expr<'a> =
+{
+    "!" <e:UN> => Expr::Call(FnName::Not, vec![e]),
+    "-" <e:UN> => Expr::Call(FnName::Negate, vec![e]),
+    "print" <e:UN> => Expr::Call(FnName::Print, vec![e]),
+    <e:GRP> => e
+}
+
+GRP: Expr<'a> =
+{
+    "(" <e:ASSN> ")" => e,
+    <e:"literal"> => Expr::Literal(e),
+    <e:"iden"> => Expr::Identifier(e)
+}

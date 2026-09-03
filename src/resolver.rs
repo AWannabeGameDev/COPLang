@@ -1,5 +1,10 @@
+// The resolver does several things together because of their interdependent nature.
+// Its primary purpose is verifying that the value type and value category of each expression is correct.
+// However, since verifying these for call expressions requires function overload resolution, and for identifiers 
+// requires variable binding, it does both of those too. There's no point doing these a second time in a later stage.
+
 use crate::lexer::*;
-use crate::parser::*;
+use crate::parser::expr::*;
 
 // In the future add a variant for custom types
 #[derive(Copy, Clone, PartialEq)]
@@ -45,7 +50,7 @@ impl Resolver
     {
         match self.annotate(expr)
         {
-            Ok(expr) => self.ast = expr,
+            Ok(res_expr) => self.ast = res_expr,
             Err(err) => self.errors.push(err)
         }
     }

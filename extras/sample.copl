@@ -1,0 +1,8 @@
+//[Int] x = [Int {5}];
+//[Int] y = [Int {6}];
+entt x: Int = 5;
+entt y: Int = 6;
+entt add: Int = x + y;
+entt sub: Int = x - y;
+print add;
+print sub;

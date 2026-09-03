@@ -7,7 +7,7 @@ pub enum ComptType
     Int, Float, Bool
 }
 
-pub struct EnttType(Vec<ComptType>);
+pub struct EnttType(pub Vec<ComptType>);
 
 pub enum Stmt<'a>
 {
@@ -74,8 +74,9 @@ impl<'a> Parser<'a>
                 {
                     Some(Token::Identifier(x)) => 
                     {
-                        name = *x;
+                        let iden = *x;
                         tok_iter.next();
+                        name = iden;
                     },
                     Some(token) => return Err(ParseError::ExpectedIdentifier(*token)),
                     None => unreachable!()

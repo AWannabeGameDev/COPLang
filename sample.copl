@@ -1,7 +1,0 @@
-//[Int] x = [Int {5}];
-//[Int] y = [Int {6}];
-//[Int] add = x + y;
-//[Int] sub = x - y;
-//print add;
-//print sub;
-!(4 >= 5) && 10 / 0 == 5 ? (3.0 , -5.0 + 10.0) : (0.0 , 99.9)

@@ -3,7 +3,8 @@
 
 use std::fmt;
 
-use crate::*;
+use crate::lexer::*;
+use crate::ast::*;
 
 impl fmt::Display for Literal 
 {
@@ -53,40 +54,80 @@ impl<'a> fmt::Display for Token<'a>
     }
 }
 
+// --- From stmt.rs ---
+
+impl fmt::Display for ComptType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ComptType::Int => write!(f, "Int"), //[cite: 3]
+            ComptType::Float => write!(f, "Float"), //[cite: 3]
+            ComptType::Bool => write!(f, "Bool"), //[cite: 3]
+        }
+    }
+}
+
+impl fmt::Display for EnttType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, compt) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", compt)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'a> fmt::Display for Stmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Stmt::Decl(entt, name, expr) => {
+                // Converting the byte slice to a readable string[cite: 3]
+                write!(f, "entt {}: {} = {};", String::from_utf8_lossy(name), entt, expr)
+            }
+            Stmt::Expr(expr) => write!(f, "{};", expr), //[cite: 3]
+        }
+    }
+}
+
+// --- From expr.rs ---
+
 impl fmt::Display for FnName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
-            FnName::Negate => "-",
-            FnName::Not => "!",
-            FnName::DiscardLeft => ",",
-            FnName::Add => "+",
-            FnName::Sub => "-",
-            FnName::Mul => "*",
-            FnName::Div => "/",
-            FnName::Greater => ">",
-            FnName::Lesser => "<",
-            FnName::GreaterEq => ">=",
-            FnName::LesserEq => "<=",
-            FnName::And => "&&",
-            FnName::Or => "||",
-            FnName::Ternary => "?:",
-            FnName::EqualTo => "==",
-            FnName::NotEqualTo => "!=",
+            FnName::Negate => "-", //[cite: 1]
+            FnName::Not => "!", //[cite: 1]
+            FnName::Add => "+", //[cite: 1]
+            FnName::Sub => "-", //[cite: 1]
+            FnName::Mul => "*", //[cite: 1]
+            FnName::Div => "/", //[cite: 1]
+            FnName::EqualTo => "==", //[cite: 1]
+            FnName::NotEqualTo => "!=", //[cite: 1]
+            FnName::Greater => ">", //[cite: 1]
+            FnName::Lesser => "<", //[cite: 1]
+            FnName::GreaterEq => ">=", //[cite: 1]
+            FnName::LesserEq => "<=", //[cite: 1]
+            FnName::And => "&&", //[cite: 1]
+            FnName::Or => "||", //[cite: 1]
+            FnName::Assign => "=", //[cite: 1]
+            FnName::Ternary => "?:", //[cite: 1]
+            FnName::Print => "print"
         };
-        write!(f, "{op}")
+        write!(f, "{}", op)
     }
 }
 
-impl fmt::Display for Expr {
+impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Literal(lit) => write!(f, "{lit}"),
-            Expr::Empty => write!(f, "()"), // or whatever represents an empty node in your lang
-            Expr::Call(op, args) => {
-                // Formatting as (operator arg1 arg2) 
-                write!(f, "({op}")?;
+            Expr::Literal(lit) => write!(f, "{}", lit), //[cite: 1]
+            Expr::Identifier(ident) => write!(f, "{}", String::from_utf8_lossy(ident)), //[cite: 1]
+            Expr::Call(func, args) => { //[cite: 1]
+                // Using S-expression formatting for a cleaner AST print
+                write!(f, "({}", func)?;
                 for arg in args {
-                    write!(f, " {arg}")?;
+                    write!(f, " {}", arg)?;
                 }
                 write!(f, ")")
             }
@@ -94,103 +135,11 @@ impl fmt::Display for Expr {
     }
 }
 
-impl<'a> fmt::Display for ParseError<'a> {
+impl<'a> fmt::Display for AST<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::NoClosingParen {after} => {
-                write!(f, "Missing closing parenthesis after {after}")
-            }
-            ParseError::UnexpectedEOF => {
-                write!(f, "Unexpected end of file while parsing")
-            }
-            ParseError::UnexpectedToken(token) => {
-                // Now this just hooks directly into FullToken's Display impl
-                write!(f, "Unexpected token: {token}")
-            },
-            ParseError::MissingLeftOperand {op} =>
-            {
-                write!(f, "Missing left operand for {}", op)
-            }
+        for stmt in &self.0 {
+            writeln!(f, "{}", stmt)?;
         }
-    }
-}
-
-impl fmt::Display for ExprType
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        match self
-        {
-            ExprType::Int => write!(f, "Int"),
-            ExprType::Float => write!(f, "Float"),
-            ExprType::Bool => write!(f, "Bool"),
-            ExprType::Unit => write!(f, "Unit"),
-        }
-    }
-}
-
-impl fmt::Display for HalfResExpr
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        match self
-        {
-            HalfResExpr::Literal(lit) => write!(f, "{}", lit),
-            HalfResExpr::Call(fn_name, args) =>
-            {
-                write!(f, "{}(", fn_name)?;
-                for (i, arg) in args.iter().enumerate()
-                {
-                    if i > 0 {write!(f, ", ")?;}
-                    write!(f, "{}", arg)?;
-                }
-                write!(f, ")")
-            },
-            HalfResExpr::Empty => write!(f, "<empty>"),
-        }
-    }
-}
-
-impl fmt::Display for ResExpr
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        // Formats like a proper typed AST: (5 + 3 : Int)
-        write!(f, "({}:{})", self.expr, self.typ)
-    }
-}
-
-impl fmt::Display for TypeError
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        match self
-        {
-            TypeError::ArgCountMismatch(name) => write!(f, "Argument count mismatch for function '{}'", name),
-            TypeError::ArgTypeMismatch(name) => write!(f, "Argument type mismatch for function '{}'", name),
-        }
-    }
-}
-
-impl fmt::Display for ExprResult
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        match self
-        {
-            ExprResult::Literal(x) => write!(f, "{}", x),
-            ExprResult::Unit => write!(f, "()"),
-        }
-    }
-}
-
-impl fmt::Display for RuntimeError
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        match self
-        {
-            RuntimeError::DivByZero(name) => write!(f, "Division by zero in args to function '{}'", name),
-        }
+        Ok(())
     }
 }

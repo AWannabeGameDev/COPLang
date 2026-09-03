@@ -6,7 +6,7 @@ use crate::parser::*;
 #[derive(Copy, Clone)]
 pub enum FnName
 {
-    Negate, Not,
+    Negate, Not, Print,
     Add, Sub, Mul, Div,
     EqualTo, NotEqualTo,
     Greater, Lesser, GreaterEq, LesserEq,
@@ -18,12 +18,13 @@ pub enum FnName
 
 fn unary_op(tok: Token) -> FnName
 {
-    assert!(matches!(tok, Token::Minus | Token::Bang));
+    assert!(matches!(tok, Token::Minus | Token::Bang | Token::Print));
         
     match tok
     {
         Token::Minus => FnName::Negate,
         Token::Bang => FnName::Not,
+        Token::Print => FnName::Print,
         _ => unreachable!()
     }
 }
@@ -60,8 +61,7 @@ pub enum Expr<'a>
 {
     Literal(Literal),
     Identifier(&'a [u8]),
-    Call(FnName, Vec<Expr<'a>>),
-    Empty
+    Call(FnName, Vec<Expr<'a>>)
 }
 
 macro_rules! left_binary_op
@@ -81,8 +81,9 @@ macro_rules! left_binary_op
                 {
                     $pat =>
                     {
-                        ret = Expr::Call(binary_op(*token), vec![ret, Self::$next(tok_iter)?]);
+                        let op = *token;
                         tok_iter.next();
+                        ret = Expr::Call(binary_op(op), vec![ret, Self::$next(tok_iter)?])
                     },
                     _ => break
                 }
@@ -107,8 +108,8 @@ impl<'a> Parser<'a>
         {
             Some(Token::Eq) =>
             {
-                ret = Expr::Call(FnName::Assign, vec![ret, Self::parse_assign(tok_iter)?]);
                 tok_iter.next();
+                ret = Expr::Call(FnName::Assign, vec![ret, Self::parse_assign(tok_iter)?])
             },
             _ => ()
         }
@@ -136,8 +137,8 @@ impl<'a> Parser<'a>
                     {
                         Some(Token::Colon) =>
                         {
-                            ret = Expr::Call(FnName::Ternary, vec![ret, if_branch, Self::parse_ternary(tok_iter)?]);
                             tok_iter.next();
+                            ret = Expr::Call(FnName::Ternary, vec![ret, if_branch, Self::parse_ternary(tok_iter)?]);
                             break
                         },
                         Some(token) => return Err(ParseError::ExpectedToken {expect: Token::Colon, actual: *token}),
@@ -164,7 +165,7 @@ impl<'a> Parser<'a>
     {
         match tok_iter.peek().map(|x| x.borrow())
         {
-            Some(op @ (Token::Minus | Token::Bang)) => 
+            Some(op @ (Token::Minus | Token::Bang | Token::Print)) => 
             {
                 let op = *op;
                 tok_iter.next();

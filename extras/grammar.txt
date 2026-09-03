@@ -1,0 +1,18 @@
+PROG -> (STMT)* eof
+
+STMT -> entt iden: ENTT = EXPR; | EXPR;
+// ENTT -> COMPT | [COMPTLIST]
+// COMPTLIST -> COMPTLIST, COMPT | COMPT
+// COMPT -> &ENTT | Int | Float | Bool | iden
+ENTT -> COMPT
+COMPT -> Int | Float | Bool
+
+ASSN -> TERN = ASSN | TERN
+TERN -> LOG ? TERN : TERN | LOG
+LOG -> LOG (&& | \|\|) EQ | EQ
+EQ -> EQ (!= | ==) INEQ | INEQ
+INEQ -> INEQ (> | < | >= | <=) ADD | ADD
+ADD -> ADD (+ | -) FACT | FACT
+FACT -> FACT (\* | /) UN | UN
+UN -> (! | -)UN | GRP
+GRP -> \(ASSN\) | literal | iden

@@ -1,4 +1,4 @@
-use logos::Logos;
+use logos::{Logos, SpannedIter};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Literal {
@@ -12,8 +12,6 @@ pub enum Literal {
 #[logos(skip(r"[ \t\n\f]+|//[^\n]*", allow_greedy = true))]
 pub enum Token<'a> 
 {
-    EOF,
-
     // Punctuation
     #[token("[")] LeftSqr, 
     #[token("]")] RightSqr, 
@@ -54,7 +52,8 @@ pub enum Token<'a>
     #[token("if")] If, 
     #[token("else")] Else, 
     #[token("while")] While, 
-    #[token("for")] For, 
+    #[token("for")] For,
+    #[token("entt")] Entt,
     
     // Identifiers (borrowed directly from source as a byte slice)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().as_bytes())]
@@ -72,4 +71,34 @@ pub enum Token<'a>
 pub enum LexerError
 {
     #[default] InvalidToken
+}
+
+pub struct LexerWrapper<'a> 
+{
+    inner: SpannedIter<'a, Token<'a>>,
+}
+
+impl<'a> LexerWrapper<'a> 
+{
+    pub fn new(input: &'a str) -> Self 
+    {
+        Self {inner: Token::lexer(input).spanned()}
+    }
+}
+
+impl<'a> Iterator for LexerWrapper<'a> 
+{
+    type Item = Result<(usize, Token<'a>, usize), LexerError>;
+
+    fn next(&mut self) -> Option<Self::Item> 
+    {
+        self.inner.next().map(|(token_res, span)| 
+        {
+            match token_res 
+            {
+                Ok(token) => Ok((span.start, token, span.end)),
+                Err(e) => Err(e),
+            }
+        })
+    }
 }
