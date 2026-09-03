@@ -137,6 +137,11 @@ UN: Expr<'a> =
 GRP: Expr<'a> =
 {
     "(" <e:ASSN> ")" => e,
-    <e:"literal"> => Expr::Literal(e),
+    <e:ENTLIT> => e,
     <e:"iden"> => Expr::Identifier(e)
+}
+
+ENTLIT: Expr<'a> =
+{
+    <e:"literal"> => Expr::Literal(e)
 }

@@ -16,25 +16,29 @@ pub enum FnName
 #[derive(Debug)]
 pub enum Expr<'a>
 {
-    Literal(Literal),
-    Identifier(&'a [u8]),
-    Call(FnName, Vec<Expr<'a>>)
+    Literal(Literal), // -> copy the value into the corresponding component slot in workspace
+    Identifier(&'a [u8]), // -> Stack(i64) -> copy this entity into workspace
+    Call(FnName, Vec<Expr<'a>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ComptType
 {
     Int, Float, Bool
 }
 
-#[derive(Debug)]
-pub struct EnttType(pub Vec<ComptType>);
+#[derive(Clone, PartialEq)]
+pub enum EnttType
+{
+    Compt(ComptType),
+    Unit
+}
 
 #[derive(Debug)]
 pub enum Stmt<'a>
 {
-    Decl(EnttType, &'a [u8], Expr<'a>),
-    Expr(Expr<'a>)
+    Decl(ComptType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
+    Expr(Expr<'a>) // -> evaluate
 }
 
 #[derive(Debug)]

@@ -6,6 +6,7 @@ use lalrpop_util::lalrpop_mod;
 mod ast;
 mod lexer;
 lalrpop_mod!(parser);
+mod resolver;
 mod displays;
 
 use lexer::*;

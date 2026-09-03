@@ -6,3 +6,5 @@ entt add: Int = x + y;
 entt sub: Int = x - y;
 print add;
 print sub;
+
+Declarations don't need to store identifier. They do need to store component ID which contains an index and a stride.

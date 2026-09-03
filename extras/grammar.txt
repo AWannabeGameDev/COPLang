@@ -1,9 +1,11 @@
-PROG -> (STMT)* eof
+PROG -> STMT* eof
 
 STMT -> entt iden: ENTT = EXPR; | EXPR;
 // ENTT -> COMPT | [COMPTLIST]
 // COMPTLIST -> COMPTLIST, COMPT | COMPT
 // COMPT -> &ENTT | Int | Float | Bool | iden
+// Representation of ENTT -> list of ComptType
+// Representation of ComptType -> Compt name | ref(ENTT)
 ENTT -> COMPT
 COMPT -> Int | Float | Bool
 
@@ -14,5 +16,15 @@ EQ -> EQ (!= | ==) INEQ | INEQ
 INEQ -> INEQ (> | < | >= | <=) ADD | ADD
 ADD -> ADD (+ | -) FACT | FACT
 FACT -> FACT (\* | /) UN | UN
-UN -> (! | -)UN | GRP
-GRP -> \(ASSN\) | literal | iden
+UN -> (! | - | print)UN | GRP
+GRP -> \(ASSN\) | ENTLIT | iden
+ENTLIT -> literal
+
+// ENTLIT -> [ENTLITLIST] | COMPTLIT | PURE
+// ENTLITLIST -> ENTLITLIST, COMPTLIT | COMPTLIT
+// COMPTLIT -> iden {COMPTLITLIST}
+// COMPTLITLIST -> COMPTLITLIST, COMPTLIT | COMPTLITLIST, PURE | COMPTLIT | PURE
+// PURE -> literal | ASSN
+// Representation of entity literal -> list of component literals
+// Representation of component literal -> name, list of (component literal | pure literal)
+// Representation of pure literal -> data | ASSN

@@ -3,163 +3,249 @@
 // However, since verifying these for call expressions requires function overload resolution, and for identifiers 
 // requires variable binding, it does both of those too. There's no point doing these a second time in a later stage.
 
+use std::collections::HashMap;
+
 use crate::lexer::*;
-use crate::parser::expr::*;
+use crate::ast::*;
 
-// In the future add a variant for custom types
-#[derive(Copy, Clone, PartialEq)]
-pub enum ExprType
-{
-    Int, Float, Bool, Unit
-}
-
-pub enum HalfResExpr
+pub enum ResExpr
 {
     Literal(Literal),
-    // In the future, build another struct "ResFnName" which resolves overloads
-    Call(FnName, Vec<ResExpr>),
-    Empty
+    StackBinding(i64),
+    Call(FnName, Vec<ResExpr>)
 }
 
-pub struct ResExpr
+pub enum ResStmt
 {
-    pub expr: HalfResExpr,
-    pub typ: ExprType
+    Decl(ResExpr),
+    Expr(ResExpr)
 }
 
-pub enum TypeError
+pub struct ResAST(Vec<ResStmt>);
+
+pub enum ResError<'a>
 {
+    IdentifierNotFound(&'a [u8]),
     ArgCountMismatch(FnName),
-    ArgTypeMismatch(FnName)
+    ArgTypeMismatch(FnName, i64),
+    ExpectedLvalue(Expr<'a>)
 }
 
-pub struct Resolver
+struct Environment<'a>
 {
-    pub ast: ResExpr,
-    pub errors: Vec<TypeError>
+    vars: HashMap<&'a [u8], (EnttType, i64)>,
+    reset_idx: i64,
+    next_idx: i64
 }
 
-impl Resolver
+pub struct Resolver<'a>
 {
-    pub fn new() -> Self
-    {
-        Self {ast: ResExpr{expr: HalfResExpr::Empty, typ: ExprType::Unit}, errors: Vec::new()}
-    }
+    pub ast: ResAST,
+    pub errors: Vec<ResError<'a>>,
+    env_chain: Vec<Environment<'a>>
+}
 
-    pub fn check(&mut self, expr: &Expr)
+impl<'a> Resolver<'a>
+{
+    fn resolve_rvalue(&self, expr: Expr<'a>) -> Result<(ResExpr, EnttType), ResError<'a>>
     {
-        match self.annotate(expr)
-        {
-            Ok(res_expr) => self.ast = res_expr,
-            Err(err) => self.errors.push(err)
-        }
-    }
-
-    fn annotate(&mut self, expr: &Expr) -> Result<ResExpr, TypeError>
-    {
-        assert!(!matches!(expr, Expr::Empty));
-
         match expr
         {
             Expr::Literal(x) =>
             {
-                let typ = match x
+                match x
                 {
-                    Literal::Int(_) => ExprType::Int,
-                    Literal::Float(_) => ExprType::Float,
-                    Literal::Bool(_) => ExprType::Bool,
-                };
-
-                Ok(ResExpr {expr: HalfResExpr::Literal(*x), typ})
+                    Literal::Int(_) => Ok((ResExpr::Literal(x), EnttType::Compt(ComptType::Int))),
+                    Literal::Float(_) => Ok((ResExpr::Literal(x), EnttType::Compt(ComptType::Float))),
+                    Literal::Bool(_) => Ok((ResExpr::Literal(x), EnttType::Compt(ComptType::Bool))),
+                }
             },
-            Expr::Call(f, args) =>
+            Expr::Identifier(x) =>
             {
-                let res_args: Vec<_> = args.iter().filter_map(|e|
-                    match self.annotate(e) 
+                for env in self.env_chain.iter().rev()
+                {
+                    match env.vars.get(x)
                     {
-                        Ok(re) => Some(re), 
-                        Err(err) => 
-                        {
-                            self.errors.push(err); 
-                            None
-                        }
+                        Some((typ, idx)) => return Ok((ResExpr::StackBinding(*idx), typ.clone())),
+                        None => ()
                     }
-                ).collect();
+                }
 
-                self.resolve_fn(*f, res_args)
+                Err(ResError::IdentifierNotFound(x))
             },
-            Expr::Empty => unreachable!()
+            Expr::Call(f, mut args) =>
+            {
+                match f
+                {
+                    FnName::Negate =>
+                    {
+                        if args.len() != 1 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr, typ) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        match typ
+                        {
+                            EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
+                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                        }
+
+                        Ok((ResExpr::Call(f, vec![expr]), typ))
+                    },
+                    FnName::Not => 
+                    {
+                        if args.len() != 1 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr, typ) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        match typ
+                        {
+                            EnttType::Compt(ComptType::Bool) => (),
+                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                        }
+
+                        Ok((ResExpr::Call(f, vec![expr]), EnttType::Compt(ComptType::Bool)))
+                    },
+                    FnName::Print => 
+                    {
+                        if args.len() != 1 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr, _typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        
+                        Ok((ResExpr::Call(f, vec![expr]), EnttType::Unit))
+                    },
+                    FnName::Add | FnName::Sub | FnName::Mul | FnName::Div => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        match typ1
+                        {
+                            EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
+                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                        }
+
+                        Ok((ResExpr::Call(f, vec![expr1, expr2]), typ1))
+                    },
+                    FnName::EqualTo | FnName::NotEqualTo => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
+                    },
+                    FnName::Greater | FnName::Lesser | FnName::GreaterEq | FnName::LesserEq => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        match typ1
+                        {
+                            EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
+                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                        }
+
+                        Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
+                    },
+                    FnName::And | FnName::Or => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        if typ1 != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
+                        if typ2 != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
+                    },
+                    FnName::Assign => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        
+                        let (rhs_expr, rhs_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (lhs_expr, lhs_typ) = self.resolve_lvalue(args.pop().unwrap())?;
+
+                        if lhs_typ != rhs_typ {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        Ok((ResExpr::Call(f, vec![lhs_expr, rhs_expr]), lhs_typ))
+                    },
+                    FnName::Ternary => 
+                    {
+                        if args.len() != 3 {return Err(ResError::ArgCountMismatch(f));}
+                        let (cond_expr, cond_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        
+                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
+
+                        let (false_expr, false_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (true_expr, true_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+
+                        if true_typ != false_typ {return Err(ResError::ArgTypeMismatch(f, 2));}
+
+                        Ok((ResExpr::Call(f, vec![cond_expr, true_expr, false_expr]), true_typ))
+                    },
+                }
+            }
         }
     }
 
-    // rewrite for overload resolution in the future
-    fn resolve_fn(&mut self, f: FnName, args: Vec<ResExpr>) -> Result<ResExpr, TypeError>
+    fn resolve_lvalue(&self, expr: Expr<'a>) -> Result<(ResExpr, EnttType), ResError<'a>>
     {
-        match f
+        match expr
         {
-            FnName::Negate => 
+            Expr::Identifier(x) =>
             {
-                if args.len() != 1 {return Err(TypeError::ArgCountMismatch(f));}
-                match args[0].typ
+                for env in self.env_chain.iter().rev()
                 {
-                    ExprType::Int | ExprType::Float =>
+                    match env.vars.get(x)
                     {
-                        let typ = args[0].typ;
-                        Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ})
+                        Some((typ, idx)) => return Ok((ResExpr::StackBinding(*idx), typ.clone())),
+                        None => ()
+                    }
+                }
+
+                Err(ResError::IdentifierNotFound(x))
+            },
+            Expr::Call(f, mut args) =>
+            {
+                match f
+                {
+                    FnName::Assign => 
+                    {
+                        if args.len() != 2 {return Err(ResError::ArgCountMismatch(f));}
+                        
+                        let (rhs_expr, rhs_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        let (lhs_expr, lhs_typ) = self.resolve_lvalue(args.pop().unwrap())?;
+
+                        if lhs_typ != rhs_typ {return Err(ResError::ArgTypeMismatch(f, 1));}
+
+                        Ok((ResExpr::Call(f, vec![lhs_expr, rhs_expr]), lhs_typ))
                     },
-                    _ => Err(TypeError::ArgTypeMismatch(f))
+                    FnName::Ternary => 
+                    {
+                        if args.len() != 3 {return Err(ResError::ArgCountMismatch(f));}
+                        let (cond_expr, cond_typ) = self.resolve_rvalue(args.pop().unwrap())?;
+                        
+                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
+
+                        // For a ternary to be a valid L-value, BOTH branches must be valid L-values
+                        let (false_expr, false_typ) = self.resolve_lvalue(args.pop().unwrap())?;
+                        let (true_expr, true_typ) = self.resolve_lvalue(args.pop().unwrap())?;
+
+                        if true_typ != false_typ {return Err(ResError::ArgTypeMismatch(f, 2));}
+
+                        Ok((ResExpr::Call(f, vec![cond_expr, true_expr, false_expr]), true_typ))
+                    },
+                    // Any other function call strictly produces an R-value
+                    _ => Err(ResError::ExpectedLvalue(Expr::Call(f, args))),
                 }
             },
-            FnName::Not => 
-            {
-                if args.len() != 1 {return Err(TypeError::ArgCountMismatch(f));}
-                if args[0].typ != ExprType::Bool {return Err(TypeError::ArgTypeMismatch(f));}
-                Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ: ExprType::Bool})
-            },
-            FnName::Add | FnName::Sub | FnName::Mul | FnName::Div => 
-            {
-                if args.len() != 2 {return Err(TypeError::ArgCountMismatch(f));}
-                match (args[0].typ, args[1].typ)
-                {
-                    (ExprType::Int, ExprType::Int) => Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ: ExprType::Int}),
-                    (ExprType::Float, ExprType::Float) => Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ: ExprType::Float}),
-                    _ => Err(TypeError::ArgTypeMismatch(f))
-                }
-            },
-            FnName::Greater | FnName::Lesser | FnName::GreaterEq | FnName::LesserEq | FnName::EqualTo | FnName::NotEqualTo => 
-            {
-                if args.len() != 2 {return Err(TypeError::ArgCountMismatch(f));}
-                match (args[0].typ, args[1].typ)
-                {
-                    (ExprType::Int, ExprType::Int) | (ExprType::Float, ExprType::Float) =>
-                        Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ: ExprType::Bool}),
-                    _ => Err(TypeError::ArgTypeMismatch(f))
-                }
-            },
-            FnName::And | FnName::Or => 
-            {
-                if args.len() != 2 {return Err(TypeError::ArgCountMismatch(f));}
-                match (args[0].typ, args[1].typ)
-                {
-                    (ExprType::Bool, ExprType::Bool) => Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ: ExprType::Bool}),
-                    _ => Err(TypeError::ArgTypeMismatch(f))
-                }
-            },
-            FnName::DiscardLeft => 
-            {
-                if args.len() != 2 {return Err(TypeError::ArgCountMismatch(f));}
-                let typ = args[1].typ;
-                Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ})
-            },
-            FnName::Ternary => 
-            {
-                if args.len() != 3 {return Err(TypeError::ArgCountMismatch(f));}
-                if args[0].typ != ExprType::Bool {return Err(TypeError::ArgTypeMismatch(f));}
-                if args[1].typ != args[2].typ {return Err(TypeError::ArgTypeMismatch(f));}
-                
-                let typ = args[1].typ;
-                Ok(ResExpr {expr: HalfResExpr::Call(f, args), typ})
-            },
+            // Literals have no memory address
+            Expr::Literal(_) => Err(ResError::ExpectedLvalue(expr)),
         }
     }
 }
