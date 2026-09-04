@@ -27,7 +27,8 @@ pub enum ComptType
     Int, Float, Bool
 }
 
-#[derive(Clone, PartialEq)]
+// TODO: CONVERT TO A TYPE REPO WHICH RETURNS UNIQUE IDS FOR EACH TYPE. AVOIDS CLONING.
+#[derive(Clone, PartialEq, Debug)]
 pub enum EnttType
 {
     Compt(ComptType),
@@ -37,7 +38,7 @@ pub enum EnttType
 #[derive(Debug)]
 pub enum Stmt<'a>
 {
-    Decl(ComptType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
+    Decl(EnttType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
     Expr(Expr<'a>) // -> evaluate
 }
 

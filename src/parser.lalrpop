@@ -67,7 +67,8 @@ STMT: Stmt<'a> =
 
 ENTT: EnttType =
 {
-    <c:COMPT> => EnttType(vec![c])
+    <c:COMPT> => EnttType::Compt(c),
+    "[" "]" => EnttType::Unit
 }
 
 COMPT: ComptType =

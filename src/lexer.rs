@@ -1,7 +1,8 @@
 use logos::{Logos, SpannedIter};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
-pub enum Literal {
+pub enum Literal 
+{
     Int(i64), 
     Float(f64), 
     Bool(bool)

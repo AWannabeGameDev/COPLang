@@ -21,14 +21,15 @@ pub enum ResStmt
     Expr(ResExpr)
 }
 
-pub struct ResAST(Vec<ResStmt>);
+pub struct ResAST(pub Vec<ResStmt>);
 
 pub enum ResError<'a>
 {
     IdentifierNotFound(&'a [u8]),
     ArgCountMismatch(FnName),
-    ArgTypeMismatch(FnName, i64),
-    ExpectedLvalue(Expr<'a>)
+    TypeMismatch(ResExpr),
+    ExpectedLvalue(Expr<'a>),
+    Redecl(&'a [u8])
 }
 
 struct Environment<'a>
@@ -40,13 +41,62 @@ struct Environment<'a>
 
 pub struct Resolver<'a>
 {
-    pub ast: ResAST,
-    pub errors: Vec<ResError<'a>>,
     env_chain: Vec<Environment<'a>>
 }
 
 impl<'a> Resolver<'a>
 {
+    pub fn new() -> Self
+    {
+        Self {env_chain: vec![Environment {vars:HashMap::new(), reset_idx: -1, next_idx: 0}]}
+    }
+
+    pub fn resolve(&mut self, ast: AST<'a>) -> (ResAST, Vec<ResError<'a>>)
+    {
+        let mut res_ast = ResAST(Vec::new());
+        let mut errors = Vec::<ResError<'a>>::new();
+
+        for stmt in ast.0
+        {
+            match self.resolve_stmt(stmt)
+            {
+                Ok(res_stmt) => res_ast.0.push(res_stmt),
+                Err(err) => errors.push(err)
+            }
+        }
+
+        (res_ast, errors)
+    }
+
+    fn resolve_stmt(&mut self, stmt: Stmt<'a>) -> Result<ResStmt, ResError<'a>>
+    {
+        match stmt
+        {
+            Stmt::Decl(typ, iden, expr) => 
+            {
+                let (res_expr, expr_type) = self.resolve_rvalue(expr)?;
+                if expr_type != typ {return Err(ResError::TypeMismatch(res_expr));}
+
+                let env = self.env_chain.last_mut().unwrap();
+                match env.vars.get(iden)
+                {
+                    Some(_) => Err(ResError::Redecl(iden)),
+                    None =>
+                    {
+                        env.vars.insert(iden, (typ, env.next_idx));
+                        env.next_idx += 1;
+                        Ok(ResStmt::Decl(res_expr))
+                    }
+                }
+            },
+            Stmt::Expr(expr) => 
+            {
+                let (res_expr, _) = self.resolve_rvalue(expr)?;
+                Ok(ResStmt::Expr(res_expr))
+            },
+        }
+    }
+
     fn resolve_rvalue(&self, expr: Expr<'a>) -> Result<(ResExpr, EnttType), ResError<'a>>
     {
         match expr
@@ -66,6 +116,7 @@ impl<'a> Resolver<'a>
                 {
                     match env.vars.get(x)
                     {
+                        // TODO: ENTTTYPE REPO
                         Some((typ, idx)) => return Ok((ResExpr::StackBinding(*idx), typ.clone())),
                         None => ()
                     }
@@ -73,6 +124,7 @@ impl<'a> Resolver<'a>
 
                 Err(ResError::IdentifierNotFound(x))
             },
+            // This arm is mostly AI generated since it was busywork
             Expr::Call(f, mut args) =>
             {
                 match f
@@ -85,7 +137,7 @@ impl<'a> Resolver<'a>
                         match typ
                         {
                             EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
-                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                            _ => return Err(ResError::TypeMismatch(expr))
                         }
 
                         Ok((ResExpr::Call(f, vec![expr]), typ))
@@ -98,7 +150,7 @@ impl<'a> Resolver<'a>
                         match typ
                         {
                             EnttType::Compt(ComptType::Bool) => (),
-                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                            _ => return Err(ResError::TypeMismatch(expr))
                         }
 
                         Ok((ResExpr::Call(f, vec![expr]), EnttType::Compt(ComptType::Bool)))
@@ -116,12 +168,12 @@ impl<'a> Resolver<'a>
                         let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
 
-                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if typ1 != typ2 {return Err(ResError::TypeMismatch(expr2));}
 
                         match typ1
                         {
                             EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
-                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                            _ => return Err(ResError::TypeMismatch(expr1))
                         }
 
                         Ok((ResExpr::Call(f, vec![expr1, expr2]), typ1))
@@ -132,7 +184,7 @@ impl<'a> Resolver<'a>
                         let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
 
-                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if typ1 != typ2 {return Err(ResError::TypeMismatch(expr2));}
 
                         Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
                     },
@@ -142,12 +194,12 @@ impl<'a> Resolver<'a>
                         let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
 
-                        if typ1 != typ2 {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if typ1 != typ2 {return Err(ResError::TypeMismatch(expr2));}
 
                         match typ1
                         {
                             EnttType::Compt(ComptType::Int) | EnttType::Compt(ComptType::Float) => (),
-                            _ => return Err(ResError::ArgTypeMismatch(f, 0))
+                            _ => return Err(ResError::TypeMismatch(expr1))
                         }
 
                         Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
@@ -158,8 +210,8 @@ impl<'a> Resolver<'a>
                         let (expr2, typ2) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (expr1, typ1) = self.resolve_rvalue(args.pop().unwrap())?;
 
-                        if typ1 != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
-                        if typ2 != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if typ1 != EnttType::Compt(ComptType::Bool) {return Err(ResError::TypeMismatch(expr1));}
+                        if typ2 != EnttType::Compt(ComptType::Bool) {return Err(ResError::TypeMismatch(expr2));}
 
                         Ok((ResExpr::Call(f, vec![expr1, expr2]), EnttType::Compt(ComptType::Bool)))
                     },
@@ -170,7 +222,7 @@ impl<'a> Resolver<'a>
                         let (rhs_expr, rhs_typ) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (lhs_expr, lhs_typ) = self.resolve_lvalue(args.pop().unwrap())?;
 
-                        if lhs_typ != rhs_typ {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if lhs_typ != rhs_typ {return Err(ResError::TypeMismatch(rhs_expr));}
 
                         Ok((ResExpr::Call(f, vec![lhs_expr, rhs_expr]), lhs_typ))
                     },
@@ -179,12 +231,12 @@ impl<'a> Resolver<'a>
                         if args.len() != 3 {return Err(ResError::ArgCountMismatch(f));}
                         let (cond_expr, cond_typ) = self.resolve_rvalue(args.pop().unwrap())?;
                         
-                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
+                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::TypeMismatch(cond_expr));}
 
                         let (false_expr, false_typ) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (true_expr, true_typ) = self.resolve_rvalue(args.pop().unwrap())?;
 
-                        if true_typ != false_typ {return Err(ResError::ArgTypeMismatch(f, 2));}
+                        if true_typ != false_typ {return Err(ResError::TypeMismatch(false_expr));}
 
                         Ok((ResExpr::Call(f, vec![cond_expr, true_expr, false_expr]), true_typ))
                     },
@@ -203,6 +255,7 @@ impl<'a> Resolver<'a>
                 {
                     match env.vars.get(x)
                     {
+                        // TODO: ENTTTYPE REPO
                         Some((typ, idx)) => return Ok((ResExpr::StackBinding(*idx), typ.clone())),
                         None => ()
                     }
@@ -210,6 +263,7 @@ impl<'a> Resolver<'a>
 
                 Err(ResError::IdentifierNotFound(x))
             },
+            // This arm is AI generated since it was busywork
             Expr::Call(f, mut args) =>
             {
                 match f
@@ -221,7 +275,7 @@ impl<'a> Resolver<'a>
                         let (rhs_expr, rhs_typ) = self.resolve_rvalue(args.pop().unwrap())?;
                         let (lhs_expr, lhs_typ) = self.resolve_lvalue(args.pop().unwrap())?;
 
-                        if lhs_typ != rhs_typ {return Err(ResError::ArgTypeMismatch(f, 1));}
+                        if lhs_typ != rhs_typ {return Err(ResError::TypeMismatch(rhs_expr));}
 
                         Ok((ResExpr::Call(f, vec![lhs_expr, rhs_expr]), lhs_typ))
                     },
@@ -230,21 +284,18 @@ impl<'a> Resolver<'a>
                         if args.len() != 3 {return Err(ResError::ArgCountMismatch(f));}
                         let (cond_expr, cond_typ) = self.resolve_rvalue(args.pop().unwrap())?;
                         
-                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::ArgTypeMismatch(f, 0));}
+                        if cond_typ != EnttType::Compt(ComptType::Bool) {return Err(ResError::TypeMismatch(cond_expr));}
 
-                        // For a ternary to be a valid L-value, BOTH branches must be valid L-values
                         let (false_expr, false_typ) = self.resolve_lvalue(args.pop().unwrap())?;
                         let (true_expr, true_typ) = self.resolve_lvalue(args.pop().unwrap())?;
 
-                        if true_typ != false_typ {return Err(ResError::ArgTypeMismatch(f, 2));}
+                        if true_typ != false_typ {return Err(ResError::TypeMismatch(false_expr));}
 
                         Ok((ResExpr::Call(f, vec![cond_expr, true_expr, false_expr]), true_typ))
                     },
-                    // Any other function call strictly produces an R-value
                     _ => Err(ResError::ExpectedLvalue(Expr::Call(f, args))),
                 }
             },
-            // Literals have no memory address
             Expr::Literal(_) => Err(ResError::ExpectedLvalue(expr)),
         }
     }
