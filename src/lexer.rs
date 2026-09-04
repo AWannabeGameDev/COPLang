@@ -1,3 +1,5 @@
+use std::range::Range;
+
 use logos::{Logos, SpannedIter};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -9,7 +11,7 @@ pub enum Literal
 }
 
 #[derive(Logos, PartialEq, Debug, Copy, Clone)]
-#[logos(error = LexerError)]
+#[logos(error = TokenError)]
 #[logos(skip(r"[ \t\n\f]+|//[^\n]*", allow_greedy = true))]
 pub enum Token<'a> 
 {
@@ -65,21 +67,29 @@ pub enum Token<'a>
     #[regex(r"[0-9]+\.[0-9]+", |lex| Literal::Float(lex.slice().parse().unwrap()))]
     #[token("true", |_| Literal::Bool(true))]
     #[token("false", |_| Literal::Bool(false))]
-    Literal(Literal)
+    Literal(Literal),
+
+    Error
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
-pub enum LexerError
+pub enum TokenError
 {
     #[default] InvalidToken
 }
 
-pub struct LexerWrapper<'a> 
+pub struct Lexer<'a> 
 {
     inner: SpannedIter<'a, Token<'a>>,
 }
 
-impl<'a> LexerWrapper<'a> 
+#[derive(Copy, Clone)]
+pub enum LexError
+{
+    InvalidToken(Range<usize>)
+}
+
+impl<'a> Lexer<'a> 
 {
     pub fn new(input: &'a str) -> Self 
     {
@@ -87,9 +97,9 @@ impl<'a> LexerWrapper<'a>
     }
 }
 
-impl<'a> Iterator for LexerWrapper<'a> 
+impl<'a> Iterator for Lexer<'a> 
 {
-    type Item = Result<(usize, Token<'a>, usize), LexerError>;
+    type Item = Result<(Token<'a>, Range<usize>), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> 
     {
@@ -97,8 +107,11 @@ impl<'a> Iterator for LexerWrapper<'a>
         {
             match token_res 
             {
-                Ok(token) => Ok((span.start, token, span.end)),
-                Err(e) => Err(e),
+                Ok(token) => Ok((token, Range::from(span))),
+                Err(_) => 
+                {
+                    Err(LexError::InvalidToken(Range::from(span)))
+                },
             }
         })
     }

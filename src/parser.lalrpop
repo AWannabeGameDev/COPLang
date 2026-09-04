@@ -1,14 +1,16 @@
+use lalrpop_util::ParseError;
+
 use crate::lexer::*;
 use crate::ast::*;
 
-grammar<'a>;
+grammar<'s, 'e>(errors: &'e mut Vec<ParseError<usize, Token<'s>, ()>>);
 
 extern 
 {
     type Location = usize;
-    type Error = LexerError; // From lexer.rs
+    type Error = ();
 
-    enum Token<'a> 
+    enum Token<'s> 
     {
         "[" => Token::LeftSqr,
         "]" => Token::RightSqr,
@@ -49,20 +51,28 @@ extern
         "for" => Token::For,
         "entt" => Token::Entt,
 
-        "iden" => Token::Identifier(<&'a [u8]>),
+        "iden" => Token::Identifier(<&'s [u8]>),
         "literal" => Token::Literal(<Literal>),
+
+        "<err>" => Token::Error
     }
 }
 
-pub PROG: AST<'a> =
+pub PROG: AST<'s> =
 {
     <stmts:STMT*> => AST(stmts)
 }
 
-STMT: Stmt<'a> =
+STMT: Stmt<'s> =
 {
     "entt" <id:"iden"> ":" <typ:ENTT> "=" <expr:ASSN> ";" => Stmt::Decl(typ, id, expr),
-    <expr:ASSN> ";" => Stmt::Expr(expr)
+    <expr:ASSN> ";" => Stmt::Expr(expr),
+    <err:!> ";" =>
+    {
+        errors.push(err.error);
+        Stmt::Error
+    },
+    <err:"<err>"> => Stmt::Error
 }
 
 ENTT: EnttType =
@@ -78,33 +88,33 @@ COMPT: ComptType =
     "Bool" => ComptType::Bool,
 }
 
-ASSN: Expr<'a> =
+ASSN: Expr<'s> =
 {
     <l:TERN> "=" <r:ASSN> => Expr::Call(FnName::Assign, vec![l, r]),
     <e:TERN> => e
 }
 
-TERN: Expr<'a> =
+TERN: Expr<'s> =
 {
     <p:LOG> "?" <i:TERN> ":" <e:TERN> => Expr::Call(FnName::Ternary, vec![p, i, e]),
     <e:LOG> => e
 }
 
-LOG: Expr<'a> =
+LOG: Expr<'s> =
 {
     <l:LOG> "&&" <r:EQ> => Expr::Call(FnName::And, vec![l, r]),
     <l:LOG> "||" <r:EQ> => Expr::Call(FnName::Or, vec![l, r]),
     <e:EQ> => e
 }
 
-EQ: Expr<'a> =
+EQ: Expr<'s> =
 {
     <l:EQ> "==" <r:INEQ> => Expr::Call(FnName::EqualTo, vec![l, r]),
     <l:EQ> "!=" <r:INEQ> => Expr::Call(FnName::NotEqualTo, vec![l, r]),
     <e:INEQ> => e
 }
 
-INEQ: Expr<'a> =
+INEQ: Expr<'s> =
 {
     <l:INEQ> ">" <r:ADD> => Expr::Call(FnName::Greater, vec![l, r]),
     <l:INEQ> "<" <r:ADD> => Expr::Call(FnName::Lesser, vec![l, r]),
@@ -113,21 +123,21 @@ INEQ: Expr<'a> =
     <e:ADD> => e
 }
 
-ADD: Expr<'a> =
+ADD: Expr<'s> =
 {
     <l:ADD> "+" <r:FACT> => Expr::Call(FnName::Add, vec![l, r]),
     <l:ADD> "-" <r:FACT> => Expr::Call(FnName::Sub, vec![l, r]),
     <e:FACT> => e
 }
 
-FACT: Expr<'a> =
+FACT: Expr<'s> =
 {
     <l:FACT> "*" <r:UN> => Expr::Call(FnName::Mul, vec![l, r]),
     <l:FACT> "/" <r:UN> => Expr::Call(FnName::Div, vec![l, r]),
     <e:UN> => e
 }
 
-UN: Expr<'a> =
+UN: Expr<'s> =
 {
     "!" <e:UN> => Expr::Call(FnName::Not, vec![e]),
     "-" <e:UN> => Expr::Call(FnName::Negate, vec![e]),
@@ -135,14 +145,14 @@ UN: Expr<'a> =
     <e:GRP> => e
 }
 
-GRP: Expr<'a> =
+GRP: Expr<'s> =
 {
     "(" <e:ASSN> ")" => e,
     <e:ENTLIT> => e,
     <e:"iden"> => Expr::Identifier(e)
 }
 
-ENTLIT: Expr<'a> =
+ENTLIT: Expr<'s> =
 {
     <e:"literal"> => Expr::Literal(e)
 }

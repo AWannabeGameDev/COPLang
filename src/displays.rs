@@ -17,6 +17,68 @@ impl fmt::Display for Literal
     }
 }
 
+impl<'a> fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // Punctuation
+            Token::LeftSqr => write!(f, "["),
+            Token::RightSqr => write!(f, "]"),
+            // You have to double up the braces to escape them in format strings
+            Token::LeftBrace => write!(f, "{{"), 
+            Token::RightBrace => write!(f, "}}"),
+            Token::LeftParen => write!(f, "("),
+            Token::RightParen => write!(f, ")"),
+            Token::Semicolon => write!(f, ";"),
+            Token::Colon => write!(f, ":"),
+            Token::Comma => write!(f, ","),
+            Token::Dot => write!(f, "."),
+            Token::Question => write!(f, "?"),
+            
+            // Math Ops
+            Token::Plus => write!(f, "+"),
+            Token::Minus => write!(f, "-"),
+            Token::ForSlash => write!(f, "/"),
+            Token::Star => write!(f, "*"),
+
+            // Logic & Comparison
+            Token::Eq => write!(f, "="),
+            Token::EqEq => write!(f, "=="),
+            Token::Bang => write!(f, "!"),
+            Token::BangEq => write!(f, "!="),
+            Token::Greater => write!(f, ">"),
+            Token::GreaterEq => write!(f, ">="),
+            Token::Lesser => write!(f, "<"),
+            Token::LesserEq => write!(f, "<="),
+            Token::And => write!(f, "&&"),
+            Token::Or => write!(f, "||"),
+
+            // Keywords 
+            Token::Int => write!(f, "Int"),
+            Token::Float => write!(f, "Float"),
+            Token::Bool => write!(f, "Bool"),
+            Token::Print => write!(f, "print"),
+            Token::Compt => write!(f, "compt"),
+            Token::If => write!(f, "if"),
+            Token::Else => write!(f, "else"),
+            Token::While => write!(f, "while"),
+            Token::For => write!(f, "for"),
+            Token::Entt => write!(f, "entt"),
+            
+            // Identifiers
+            Token::Identifier(bytes) => {
+                // The regex only allows ASCII characters, so this unwrap is 100% safe.
+                // If you want to be paranoid, use String::from_utf8_lossy(bytes)
+                let s = std::str::from_utf8(bytes).unwrap();
+                write!(f, "{}", s)
+            }
+            
+            // Literals
+            Token::Literal(lit) => write!(f, "{}", lit),
+            Token::Error => write!(f, "<error>")
+        }
+    }
+}
+
 impl fmt::Display for FnName
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
@@ -41,9 +103,9 @@ impl fmt::Display for ComptType
     {
         let s = match self
         {
-            ComptType::Int => "int",
-            ComptType::Float => "float",
-            ComptType::Bool => "bool",
+            ComptType::Int => "Int",
+            ComptType::Float => "Float",
+            ComptType::Bool => "Bool",
         };
         write!(f, "{}", s)
     }
@@ -88,8 +150,9 @@ impl<'a> fmt::Display for Stmt<'a>
     {
         match self
         {
-            Stmt::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", String::from_utf8_lossy(id), typ, expr),
+            Stmt::Decl(typ, id, expr) => write!(f, "entt {}: {} = {};", String::from_utf8_lossy(id), typ, expr),
             Stmt::Expr(expr) => write!(f, "{};", expr),
+            Stmt::Error => write!(f, "<Error>;")
         }
     }
 }

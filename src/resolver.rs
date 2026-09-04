@@ -3,6 +3,9 @@
 // However, since verifying these for call expressions requires function overload resolution, and for identifiers 
 // requires variable binding, it does both of those too. There's no point doing these a second time in a later stage.
 
+// Lifetime 's is for references to the source code.
+// Lifetime 'p is for references to the previous AST
+
 use std::collections::HashMap;
 
 use crate::lexer::*;
@@ -23,41 +26,43 @@ pub enum ResStmt
 
 pub struct ResAST(pub Vec<ResStmt>);
 
-pub enum ResError<'a, 'b>
+pub enum ResError<'s, 'p>
 {
-    IdentifierNotFound(&'a [u8]),
+    IdentifierNotFound(&'s [u8]),
     ArgCountMismatch(FnName),
-    TypeMismatch(&'b Expr<'a>),
-    ExpectedLvalue(&'b Expr<'a>),
-    Redecl(&'a [u8])
+    TypeMismatch(&'p Expr<'s>),
+    ExpectedLvalue(&'p Expr<'s>),
+    Redecl(&'s [u8])
 }
 
-struct Environment<'a, 'b>
+struct Environment<'s, 'p>
 {
-    vars: HashMap<&'a [u8], (&'b EnttType, i64)>,
+    vars: HashMap<&'s [u8], (&'p EnttType, i64)>,
     reset_idx: i64,
     next_idx: i64
 }
 
-pub struct Resolver<'a, 'b>
+pub struct Resolver<'s, 'p>
 {
-    env_chain: Vec<Environment<'a, 'b>>
+    env_chain: Vec<Environment<'s, 'p>>
 }
 
-impl<'a, 'b> Resolver<'a, 'b>
+impl<'s, 'p> Resolver<'s, 'p>
 {
     pub fn new() -> Self
     {
         Self {env_chain: vec![Environment {vars:HashMap::new(), reset_idx: -1, next_idx: 0}]}
     }
 
-    pub fn resolve(&mut self, ast: &'b AST<'a>) -> (ResAST, Vec<ResError<'a, 'b>>)
+    pub fn resolve(&mut self, ast: &'p AST<'s>) -> (ResAST, Vec<ResError<'s, 'p>>)
     {
         let mut res_ast = ResAST(Vec::new());
-        let mut errors = Vec::<ResError<'a, 'b>>::new();
+        let mut errors = Vec::<ResError<'s, 'p>>::new();
 
         for stmt in ast.0.iter()
         {
+            if *stmt == Stmt::Error {continue}
+
             match self.resolve_stmt(stmt)
             {
                 Ok(res_stmt) => res_ast.0.push(res_stmt),
@@ -68,7 +73,7 @@ impl<'a, 'b> Resolver<'a, 'b>
         (res_ast, errors)
     }
 
-    fn resolve_stmt(&mut self, stmt: &'b Stmt<'a>) -> Result<ResStmt, ResError<'a, 'b>>
+    fn resolve_stmt(&mut self, stmt: &'p Stmt<'s>) -> Result<ResStmt, ResError<'s, 'p>>
     {
         match stmt
         {
@@ -94,10 +99,11 @@ impl<'a, 'b> Resolver<'a, 'b>
                 let (res_expr, _) = self.resolve_rvalue(&expr)?;
                 Ok(ResStmt::Expr(res_expr))
             },
+            Stmt::Error => unreachable!()
         }
     }
 
-    fn resolve_rvalue(&self, expr: &'b Expr<'a>) -> Result<(ResExpr, &EnttType), ResError<'a, 'b>>
+    fn resolve_rvalue(&self, expr: &'p Expr<'s>) -> Result<(ResExpr, &EnttType), ResError<'s, 'p>>
     {
         match expr
         {
@@ -114,11 +120,9 @@ impl<'a, 'b> Resolver<'a, 'b>
             {
                 for env in self.env_chain.iter().rev()
                 {
-                    if let Some((typ, idx)) = env.vars.get(x) 
-                    {
-                        return Ok((ResExpr::StackBinding(*idx), typ));
-                    }
+                    if let Some((typ, idx)) = env.vars.get(x) {return Ok((ResExpr::StackBinding(*idx), typ));}
                 }
+
                 Err(ResError::IdentifierNotFound(x))
             },
             Expr::Call(f, args) =>
@@ -241,7 +245,7 @@ impl<'a, 'b> Resolver<'a, 'b>
         }
     }
 
-    fn resolve_lvalue(&self, expr: &'b Expr<'a>) -> Result<(ResExpr, &EnttType), ResError<'a, 'b>>
+    fn resolve_lvalue(&self, expr: &'p Expr<'s>) -> Result<(ResExpr, &EnttType), ResError<'s, 'p>>
     {
         match expr
         {

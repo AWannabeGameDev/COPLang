@@ -1,16 +1,19 @@
 use std::env;
 use std::fs;
 use std::process;
-use lalrpop_util::lalrpop_mod;
 
-mod ast;
+use lalrpop_util::lalrpop_mod;
+use lalrpop_util::ParseError;
+
 mod lexer;
+mod ast;
 lalrpop_mod!(parser);
 mod resolver;
 mod displays;
 
 use lexer::*;
 use parser::*;
+use resolver::*;
 
 fn main() 
 {
@@ -23,7 +26,7 @@ fn main()
     }
     
     let file_path = &args[1];
-    let source_code = fs::read_to_string(file_path).unwrap_or_else(
+    let src = fs::read_to_string(file_path).unwrap_or_else(
         |_| 
         {
             eprintln!("Fatal: Could not read file at {}", file_path);
@@ -31,37 +34,82 @@ fn main()
         }
     );
 
-    let lexer = LexerWrapper::new(&source_code);
-    let parser = PROGParser::new();
-    match parser.parse(lexer) 
-    {
-        Ok(parsed_ast) => 
+    let lexer = Lexer::new(&src);
+    let mut lex_errs = Vec::<LexError>::new();
+    let tokens: Vec<_> = lexer.map(
+        |it| match it 
         {
-            println!("Successfully parsed the source file.");
-            println!("--- AST ---");
-            println!("{}", parsed_ast); 
-
-            // Initialize the resolver and pass the AST[cite: 2]
-            let mut resolver = resolver::Resolver::new();
-            let (res_ast, errors) = resolver.resolve(&parsed_ast);
-
-            // Dump errors if the resolver found type mismatches, missing idens, etc.[cite: 2]
-            if !errors.is_empty()
+            Ok(token) => token, 
+            Err(err) => 
             {
-                eprintln!("Resolution Errors:");
-                for err in errors
+                lex_errs.push(err);
+                match err
                 {
-                    eprintln!("{}", err);
+                    LexError::InvalidToken(range) => (Token::Error, range),
                 }
             }
+        }
+    ).collect();
 
-            println!("--- Resolved AST ---");
-            println!("{}", res_ast);
-        }
-        Err(e) => 
+    if lex_errs.len() > 0
+    {
+        for err in lex_errs 
         {
-            eprintln!("Parse Error: {:?}", e);
-            process::exit(1);
+            print!("Lex error: ");
+            match err
+            {
+                LexError::InvalidToken(span) => println!("Invalid token {} at span {}:{}", 
+                    &src[span.start..span.end], span.start, span.end)
+            }
         }
+    }
+
+    let parser = PROGParser::new();
+    let mut parse_errs: Vec<ParseError<usize, Token, ()>> = Vec::new();
+    let ast = parser.parse(&mut parse_errs, tokens.into_iter().map(|(token, span)| Ok((span.start, token, span.end)))).unwrap();
+
+    if parse_errs.len() > 0
+    {
+        for err in parse_errs 
+        {
+            print!("Parse error: ");
+            match err
+            {
+                ParseError::InvalidToken {location} => println!("Invalid token at byte {location}."),
+                ParseError::UnrecognizedEof {expected, ..} => 
+                {
+                    print!("Expected ");
+                    for exp in expected {print!("{exp}, ")}
+                    println!("found EOF.");
+                },
+                ParseError::UnrecognizedToken {token: (l, tok, r), expected} =>
+                {
+                    print!("Expected ");
+                    for exp in expected {print!("{exp}, ")}
+                    println!("found {tok} at span {l}:{r}.");
+                },
+                ParseError::ExtraToken {token: (l, tok, r)} =>
+                {
+                    print!("Expected EOF, found {tok} at span {l}:{r}")
+                },
+                ParseError::User {..} => unreachable!(),
+            }
+        }
+    }
+    else
+    {
+        println!("Successfully parsed:\n{ast}")
+    }
+
+    let mut resolver = Resolver::new();
+    let (res_ast, res_errors) = resolver.resolve(&ast);
+
+    if res_errors.len() > 0
+    {
+        for err in res_errors {println!("Resolution error: {err}")}
+    }
+    else
+    {
+        println!("Successfully resolved:\n{res_ast}")
     }
 }

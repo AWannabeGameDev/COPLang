@@ -1,7 +1,7 @@
 use crate::lexer::*;
 
 // In the future add a variant for custom functions
-#[derive(Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FnName
 {
     Negate, Not, Print,
@@ -13,7 +13,7 @@ pub enum FnName
     Ternary
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Expr<'a>
 {
     Literal(Literal), // -> copy the value into the corresponding component slot in workspace
@@ -27,7 +27,6 @@ pub enum ComptType
     Int, Float, Bool
 }
 
-// TODO: CONVERT TO A TYPE REPO WHICH RETURNS UNIQUE IDS FOR EACH TYPE. AVOIDS CLONING.
 #[derive(Clone, PartialEq, Debug)]
 pub enum EnttType
 {
@@ -35,11 +34,12 @@ pub enum EnttType
     Unit
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Stmt<'a>
 {
     Decl(EnttType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
-    Expr(Expr<'a>) // -> evaluate
+    Expr(Expr<'a>), // -> evaluate
+    Error
 }
 
 #[derive(Debug)]
