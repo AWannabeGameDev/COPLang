@@ -43,7 +43,7 @@ fn main()
 
             // Initialize the resolver and pass the AST[cite: 2]
             let mut resolver = resolver::Resolver::new();
-            let (res_ast, errors) = resolver.resolve(parsed_ast);
+            let (res_ast, errors) = resolver.resolve(&parsed_ast);
 
             // Dump errors if the resolver found type mismatches, missing idens, etc.[cite: 2]
             if !errors.is_empty()
@@ -53,7 +53,6 @@ fn main()
                 {
                     eprintln!("{}", err);
                 }
-                process::exit(1);
             }
 
             println!("--- Resolved AST ---");

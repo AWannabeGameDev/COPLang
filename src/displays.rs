@@ -151,7 +151,7 @@ impl fmt::Display for ResAST
     }
 }
 
-impl<'a> fmt::Display for ResError<'a>
+impl<'a, 'b> fmt::Display for ResError<'a, 'b>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -162,9 +162,9 @@ impl<'a> fmt::Display for ResError<'a>
             ResError::ArgCountMismatch(func) => 
                 write!(f, "Invalid number of arguments for function/operator '{}'", func),
             ResError::TypeMismatch(expr) => 
-                write!(f, "Type mismatch encountered at expression: {}", expr),
+                write!(f, "Type mismatch at expression: {}", expr),
             ResError::ExpectedLvalue(expr) => 
-                write!(f, "Expected an l-value (assignable variable) but found: {}", expr),
+                write!(f, "Expected lvalue expression, found: {}", expr),
             ResError::Redecl(iden) => 
                 write!(f, "Variable '{}' has already been declared in this scope", String::from_utf8_lossy(iden)),
         }
