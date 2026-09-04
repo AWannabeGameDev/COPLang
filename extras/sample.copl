@@ -3,7 +3,7 @@
 entt x: Int = 5;
 entt y: Int = 6;
 entt add: Int = x + y;
-entt sub: Int = x - y;
+entt add: Int = x - y;
 add > sub ? x : y = 0;
 print add;
 print sub;

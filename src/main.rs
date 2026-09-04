@@ -14,6 +14,7 @@ mod displays;
 use lexer::*;
 use parser::*;
 use resolver::*;
+use displays::*;
 
 fn main() 
 {
@@ -86,11 +87,11 @@ fn main()
                 {
                     print!("Expected ");
                     for exp in expected {print!("{exp}, ")}
-                    println!("found {tok} at span {l}:{r}.");
+                    println!("found '{tok}' at span {l}:{r}.");
                 },
                 ParseError::ExtraToken {token: (l, tok, r)} =>
                 {
-                    print!("Expected EOF, found {tok} at span {l}:{r}")
+                    print!("Expected EOF, found '{tok}' at span {l}:{r}")
                 },
                 ParseError::User {..} => unreachable!(),
             }
@@ -106,7 +107,7 @@ fn main()
 
     if res_errors.len() > 0
     {
-        for err in res_errors {println!("Resolution error: {err}")}
+        for err in res_errors {print!("Resolution error: "); print_res_err(err, src.as_bytes());}
     }
     else
     {

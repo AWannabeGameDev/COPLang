@@ -1,3 +1,5 @@
+use std::range::Range;
+
 use crate::lexer::*;
 
 // In the future add a variant for custom functions
@@ -14,11 +16,18 @@ pub enum FnName
 }
 
 #[derive(PartialEq, Debug)]
-pub enum Expr<'a>
+pub enum ExprEnum<'a>
 {
     Literal(Literal), // -> copy the value into the corresponding component slot in workspace
     Identifier(&'a [u8]), // -> Stack(i64) -> copy this entity into workspace
     Call(FnName, Vec<Expr<'a>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Expr<'a>
+{
+    pub span: Range<usize>,
+    pub data: ExprEnum<'a>
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -35,11 +44,18 @@ pub enum EnttType
 }
 
 #[derive(PartialEq, Debug)]
-pub enum Stmt<'a>
+pub enum StmtEnum<'a>
 {
     Decl(EnttType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
     Expr(Expr<'a>), // -> evaluate
     Error
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Stmt<'a>
+{
+    pub span: Range<usize>,
+    pub data: StmtEnum<'a>
 }
 
 #[derive(Debug)]

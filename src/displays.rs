@@ -123,20 +123,20 @@ impl fmt::Display for EnttType
     }
 }
 
-impl<'a> fmt::Display for Expr<'a>
+impl<'a> fmt::Display for ExprEnum<'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
-            Expr::Literal(lit) => write!(f, "{}", lit),
-            Expr::Identifier(id) => write!(f, "{}", String::from_utf8_lossy(id)),
-            Expr::Call(func, args) => 
+            ExprEnum::Literal(lit) => write!(f, "{}", lit),
+            ExprEnum::Identifier(id) => write!(f, "{}", String::from_utf8_lossy(id)),
+            ExprEnum::Call(func, args) => 
             {
                 write!(f, "({}", func)?;
                 for arg in args
                 {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {}", arg.data)?;
                 }
                 write!(f, ")")
             }
@@ -144,15 +144,15 @@ impl<'a> fmt::Display for Expr<'a>
     }
 }
 
-impl<'a> fmt::Display for Stmt<'a>
+impl<'a> fmt::Display for StmtEnum<'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
-            Stmt::Decl(typ, id, expr) => write!(f, "entt {}: {} = {};", String::from_utf8_lossy(id), typ, expr),
-            Stmt::Expr(expr) => write!(f, "{};", expr),
-            Stmt::Error => write!(f, "<Error>;")
+            StmtEnum::Decl(typ, id, expr) => write!(f, "entt {}: {} = {};", String::from_utf8_lossy(id), typ, expr.data),
+            StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
+            StmtEnum::Error => write!(f, "<Error>;")
         }
     }
 }
@@ -163,7 +163,7 @@ impl<'a> fmt::Display for AST<'a>
     {
         for stmt in &self.0
         {
-            writeln!(f, "{}", stmt)?;
+            writeln!(f, "{}", stmt.data)?;
         }
         Ok(())
     }
@@ -214,22 +214,19 @@ impl fmt::Display for ResAST
     }
 }
 
-impl<'a, 'b> fmt::Display for ResError<'a, 'b>
+pub fn print_res_err(err: ResError, src: &[u8])
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    match err
     {
-        match self
-        {
-            ResError::IdentifierNotFound(iden) => 
-                write!(f, "Undeclared identifier: '{}'", String::from_utf8_lossy(iden)),
-            ResError::ArgCountMismatch(func) => 
-                write!(f, "Invalid number of arguments for function/operator '{}'", func),
-            ResError::TypeMismatch(expr) => 
-                write!(f, "Type mismatch at expression: {}", expr),
-            ResError::ExpectedLvalue(expr) => 
-                write!(f, "Expected lvalue expression, found: {}", expr),
-            ResError::Redecl(iden) => 
-                write!(f, "Variable '{}' has already been declared in this scope", String::from_utf8_lossy(iden)),
-        }
+        ResError::IdentifierNotFound(span, iden) => 
+            println!("Undeclared identifier '{}' at span {}:{}.", String::from_utf8_lossy(iden), span.start, span.end),
+        ResError::ArgCountMismatch(span) => 
+            println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+        ResError::TypeMismatch(span) => 
+            print!("Type mismatch at expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+        ResError::ExpectedLvalue(span) => 
+            println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+        ResError::Redecl(span) => 
+            println!("Redeclaration of an identifier in statement '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
     }
 }
