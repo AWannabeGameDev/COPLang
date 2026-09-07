@@ -1,178 +1,263 @@
 use crate::lexer::*;
-use crate::parser::*;
+use crate::ast::*;
 use crate::resolver::*;
 
-pub enum ExprResult
+pub struct TreeWalker
 {
-    Literal(Literal),
-    Unit
+    stack: Vec<*mut [u8]>
 }
 
-pub enum RuntimeError
+impl TreeWalker
 {
-    DivByZero(FnName)
-}
+    pub fn new() -> Self {Self {stack: Vec::new()}}
 
-pub fn interpret(ast: &ResExpr) -> Result<ExprResult, RuntimeError>
-{
-    match &ast.expr
+    pub fn execute(&mut self, ast: &ResAST)
     {
-        HalfResExpr::Literal(x) => Ok(ExprResult::Literal(*x)),
-        HalfResExpr::Call(f, args) => 
+        for stmt in ast.0.iter()
         {
-            match f
+            match stmt
             {
-                FnName::Negate => 
+                ResStmt::Decl(expr) => {let eval = self.eval(expr); self.stack.push(eval);},
+                ResStmt::Expr(expr) => 
                 {
-                    match interpret(&args[0])?
+                    let val = self.eval(expr);
+                    if expr.typ != EnttType::Unit {unsafe {drop(Box::from_raw(val));}}
+                }
+            }
+        }
+    }
+
+    fn eval(&mut self, expr: &ResExpr) -> *mut [u8]
+    {
+        match &expr.data
+        {
+            ResExprEnum::Literal(lit) => match lit
+            {
+                Literal::Int(x) => Box::into_raw(Box::new(x.to_ne_bytes())),
+                Literal::Float(x) => Box::into_raw(Box::new(x.to_ne_bytes())),
+                Literal::Bool(x) => Box::into_raw(Box::new([*x as u8])),
+            },
+            ResExprEnum::StackBinding(idx) => match &expr.cat
+            {
+                ValCat::Lvalue => self.stack[*idx],
+                ValCat::Rvalue => unsafe {Box::into_raw((&*self.stack[*idx]).to_vec().into_boxed_slice())}
+            },
+            ResExprEnum::Call(f, args) => match f
+            {
+                FnName::Negate =>
+                {
+                    let ret = self.eval(&args[0]);
+                    match args[0].typ
                     {
-                        ExprResult::Literal(Literal::Int(v)) => Ok(ExprResult::Literal(Literal::Int(-v))),
-                        ExprResult::Literal(Literal::Float(v)) => Ok(ExprResult::Literal(Literal::Float(-v))),
-                        _ => unreachable!(),
+                        EnttType::Compt(ComptType::Int) => unsafe {*(ret as *mut i64) = -*(ret as *mut i64);},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(ret as *mut f64) = -*(ret as *mut f64);},
+                        _ => unreachable!()
                     }
+
+                    ret
                 },
                 FnName::Not => 
                 {
-                    match interpret(&args[0])?
+                    let ret = self.eval(&args[0]);
+                    unsafe {*(ret as *mut u8) = (*(ret as *mut u8) == 0) as u8;}
+
+                    ret
+                },
+                FnName::Print => 
+                {
+                    let arg = self.eval(&args[0]);
+                    match args[0].typ
                     {
-                        ExprResult::Literal(Literal::Bool(v)) => Ok(ExprResult::Literal(Literal::Bool(!v))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {println!("{}", *(arg as *mut i64))},
+                        EnttType::Compt(ComptType::Float) => unsafe {println!("{}", *(arg as *mut f64))},
+                        EnttType::Compt(ComptType::Bool) => unsafe {println!("{}", *(arg as *mut u8) != 0)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(arg));}
+                    std::ptr::slice_from_raw_parts_mut(std::ptr::null_mut(), 0)
                 },
                 FnName::Add => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Int(a + b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Float(a + b))),
-                        _ => unreachable!(),
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) += *(rhs as *mut i64);},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) += *(rhs as *mut f64);},
+                        _ => unreachable!()
                     }
+
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
                 FnName::Sub => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Int(a - b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Float(a - b))),
-                        _ => unreachable!(),
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) -= *(rhs as *mut i64);},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) -= *(rhs as *mut f64);},
+                        _ => unreachable!()
                     }
+
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
                 FnName::Mul => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Int(a * b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Float(a * b))),
-                        _ => unreachable!(),
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) *= *(rhs as *mut i64);},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) *= *(rhs as *mut f64);},
+                        _ => unreachable!()
                     }
+
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
                 FnName::Div => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => 
-                        {
-                            if b == 0 {return Err(RuntimeError::DivByZero(*f));}
-                            Ok(ExprResult::Literal(Literal::Int(a / b)))
-                        },
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => 
-                        {
-                            if b == 0.0 {return Err(RuntimeError::DivByZero(*f));}
-                            Ok(ExprResult::Literal(Literal::Float(a / b)))
-                        },
-                        _ => unreachable!(),
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) /= *(rhs as *mut i64);},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) /= *(rhs as *mut f64);},
+                        _ => unreachable!()
                     }
+
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
                 FnName::EqualTo => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a == b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a == b))),
-                        (ExprResult::Literal(Literal::Bool(a)), ExprResult::Literal(Literal::Bool(b))) => Ok(ExprResult::Literal(Literal::Bool(a == b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) == *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) == *(rhs as *mut f64)},
+                        EnttType::Compt(ComptType::Bool) => unsafe {*(lhs as *mut u8) == *(rhs as *mut u8)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::NotEqualTo => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a != b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a != b))),
-                        (ExprResult::Literal(Literal::Bool(a)), ExprResult::Literal(Literal::Bool(b))) => Ok(ExprResult::Literal(Literal::Bool(a != b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) != *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) != *(rhs as *mut f64)},
+                        EnttType::Compt(ComptType::Bool) => unsafe {*(lhs as *mut u8) != *(rhs as *mut u8)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::Greater => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a > b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a > b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) > *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) > *(rhs as *mut f64)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::Lesser => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a < b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a < b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) < *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) < *(rhs as *mut f64)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::GreaterEq => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a >= b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a >= b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) >= *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) >= *(rhs as *mut f64)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::LesserEq => 
                 {
-                    match (interpret(&args[0])?, interpret(&args[1])?)
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+                    let res = match args[0].typ
                     {
-                        (ExprResult::Literal(Literal::Int(a)), ExprResult::Literal(Literal::Int(b))) => Ok(ExprResult::Literal(Literal::Bool(a <= b))),
-                        (ExprResult::Literal(Literal::Float(a)), ExprResult::Literal(Literal::Float(b))) => Ok(ExprResult::Literal(Literal::Bool(a <= b))),
-                        _ => unreachable!(),
-                    }
+                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) <= *(rhs as *mut i64)},
+                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) <= *(rhs as *mut f64)},
+                        _ => unreachable!()
+                    };
+
+                    unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
+                    Box::into_raw(Box::new([res as u8]))
                 },
                 FnName::And => 
                 {
-                    match interpret(&args[0])?
-                    {
-                        ExprResult::Literal(Literal::Bool(false)) => Ok(ExprResult::Literal(Literal::Bool(false))),
-                        ExprResult::Literal(Literal::Bool(true)) => interpret(&args[1]),
-                        _ => unreachable!(),
-                    }
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+
+                    unsafe {*(lhs as *mut u8) = (*(lhs as *mut u8) != 0 && *(rhs as *mut u8) != 0) as u8;}
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
                 FnName::Or => 
                 {
-                    match interpret(&args[0])?
-                    {
-                        ExprResult::Literal(Literal::Bool(true)) => Ok(ExprResult::Literal(Literal::Bool(true))),
-                        ExprResult::Literal(Literal::Bool(false)) => interpret(&args[1]),
-                        _ => unreachable!(),
-                    }
+                    let lhs = self.eval(&args[0]);
+                    let rhs = self.eval(&args[1]);
+
+                    unsafe {*(lhs as *mut u8) = (*(lhs as *mut u8) != 0 || *(rhs as *mut u8) != 0) as u8;}
+                    unsafe {drop(Box::from_raw(rhs));}
+                    lhs
                 },
-                FnName::DiscardLeft => 
+                FnName::Assign => 
                 {
-                    interpret(&args[0])?;
-                    interpret(&args[1])
+                    let lhs = self.eval(&args[0]); 
+                    let rhs = self.eval(&args[1]);
+
+                    unsafe {std::ptr::copy_nonoverlapping((*rhs).as_ptr(), (*lhs).as_mut_ptr(), (&*rhs).len());}
+                    match expr.cat
+                    {
+                        ValCat::Lvalue => {unsafe {drop(Box::from_raw(rhs));} lhs},
+                        ValCat::Rvalue => rhs
+                    }
                 },
                 FnName::Ternary => 
                 {
-                    match interpret(&args[0])?
-                    {
-                        ExprResult::Literal(Literal::Bool(true)) => interpret(&args[1]),
-                        ExprResult::Literal(Literal::Bool(false)) => interpret(&args[2]),
-                        _ => unreachable!(),
-                    }
+                    let cond = self.eval(&args[0]);
+                    let is_true = unsafe {*(cond as *mut u8) != 0};
+
+                    unsafe {drop(Box::from_raw(cond));}
+                    if is_true {self.eval(&args[1])} else {self.eval(&args[2])}
                 },
             }
-        },
-        HalfResExpr::Empty => Ok(ExprResult::Unit),
+        }
     }
 }

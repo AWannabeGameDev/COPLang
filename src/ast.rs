@@ -36,7 +36,7 @@ pub enum ComptType
     Int, Float, Bool
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EnttType
 {
     Compt(ComptType),

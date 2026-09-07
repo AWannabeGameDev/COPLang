@@ -9,11 +9,13 @@ mod lexer;
 mod ast;
 lalrpop_mod!(parser);
 mod resolver;
+mod tree_walker;
 mod displays;
 
 use lexer::*;
 use parser::*;
 use resolver::*;
+use tree_walker::*;
 use displays::*;
 
 fn main() 
@@ -113,4 +115,8 @@ fn main()
     {
         println!("Successfully resolved:\n{res_ast}")
     }
+
+    println!("--OUTPUT--");
+    let mut walker = TreeWalker::new();
+    walker.execute(&res_ast);
 }

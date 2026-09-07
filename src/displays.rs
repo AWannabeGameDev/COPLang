@@ -169,20 +169,20 @@ impl<'a> fmt::Display for AST<'a>
     }
 }
 
-impl fmt::Display for ResExpr
+impl fmt::Display for ResExprEnum
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
-            ResExpr::Literal(lit) => write!(f, "{}", lit),
-            ResExpr::StackBinding(idx) => write!(f, "$env[{}]", idx),
-            ResExpr::Call(func, args) => 
+            ResExprEnum::Literal(lit) => write!(f, "{}", lit),
+            ResExprEnum::StackBinding(idx) => write!(f, "$env[{}]", idx),
+            ResExprEnum::Call(func, args) => 
             {
                 write!(f, "({}", func)?;
                 for arg in args
                 {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {}", arg.data)?;
                 }
                 write!(f, ")")
             }
@@ -196,8 +196,8 @@ impl fmt::Display for ResStmt
     {
         match self
         {
-            ResStmt::Decl(expr) => write!(f, "decl {};", expr),
-            ResStmt::Expr(expr) => write!(f, "{};", expr),
+            ResStmt::Decl(expr) => write!(f, "decl {};", expr.data),
+            ResStmt::Expr(expr) => write!(f, "{};", expr.data),
         }
     }
 }
@@ -223,7 +223,7 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::ArgCountMismatch(span) => 
             println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::TypeMismatch(span) => 
-            print!("Type mismatch at expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+            println!("Found expression of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::ExpectedLvalue(span) => 
             println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::Redecl(span) => 

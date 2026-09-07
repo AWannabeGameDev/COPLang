@@ -1,9 +1,16 @@
-//[Int] x = [Int {5}];
-//[Int] y = [Int {6}];
-entt x: Int = 5;
-entt y: Int = 6;
-entt add: Int = x + y;
-entt add: Int = x - y;
-add > sub ? x : y = 0;
-print add;
-print sub;
+entt a : Int = 10;
+entt b : Int = 5;
+
+entt c : Int = a * b + 2;
+print c;
+
+entt flag : Bool = c >= 50 && a != b;
+print flag;
+
+entt result : Int = flag ? (a = 99) : (b = 99);
+
+print a;
+print b;
+print result;
+
+print (!(result == 99) || (c <= 50));
