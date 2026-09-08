@@ -1,6 +1,6 @@
 // The resolver does several things together because of their interdependent nature.
 // Its primary purpose is verifying that the value type and value category of each expression is correct.
-// However, since verifying these for call expressions requires function overload resolution, and for identifiers 
+// However, since verifying these for Op expressions requires function overload resolution, and for identifiers 
 // requires variable binding, it does both of those too. There's no point doing these a second time in a later stage.
 
 // Lifetime 's is for references to the source code.
@@ -16,7 +16,7 @@ pub enum ResExprEnum
 {
     Literal(Literal),
     StackBinding(usize),
-    Call(FnName, Vec<ResExpr>)
+    Op(Operation, Vec<ResExpr>)
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -144,9 +144,9 @@ impl<'s, 'p> Resolver<'s>
                 }
                 return Err(ResError::IdentifierNotFound(expr.span, x));
             },
-            ExprEnum::Call(f, args) => match f
+            ExprEnum::Op(f, args) => match f
             {
-                FnName::Negate =>
+                Operation::Negate =>
                 {
                     if args.len() != 1 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let res_expr = self.resolve_rvalue(&args[0])?;
@@ -158,9 +158,9 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = res_expr.typ;
-                    data = ResExprEnum::Call(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(*f, vec![res_expr]);
                 },
-                FnName::Not => 
+                Operation::Not => 
                 {
                     if args.len() != 1 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let res_expr = self.resolve_rvalue(&args[0])?;
@@ -172,17 +172,17 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Call(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(*f, vec![res_expr]);
                 },
-                FnName::Print => 
+                Operation::Print => 
                 {
                     if args.len() != 1 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let res_expr = self.resolve_rvalue(&args[0])?;
                     
                     typ = VarType::Unit;
-                    data = ResExprEnum::Call(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(*f, vec![res_expr]);
                 },
-                FnName::Add | FnName::Sub | FnName::Mul | FnName::Div => 
+                Operation::Add | Operation::Sub | Operation::Mul | Operation::Div => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let expr1 = self.resolve_rvalue(&args[0])?;
@@ -197,9 +197,9 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = expr1.typ;
-                    data = ResExprEnum::Call(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
                 },
-                FnName::EqualTo | FnName::NotEqualTo => 
+                Operation::EqualTo | Operation::NotEqualTo => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let expr1 = self.resolve_rvalue(&args[0])?;
@@ -208,9 +208,9 @@ impl<'s, 'p> Resolver<'s>
                     if expr1.typ != expr2.typ {return Err(ResError::TypeMismatch(args[1].span, expr2.typ));}
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Call(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
                 },
-                FnName::Greater | FnName::Lesser | FnName::GreaterEq | FnName::LesserEq => 
+                Operation::Greater | Operation::Lesser | Operation::GreaterEq | Operation::LesserEq => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let expr1 = self.resolve_rvalue(&args[0])?;
@@ -225,9 +225,9 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Call(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
                 },
-                FnName::And | FnName::Or => 
+                Operation::And | Operation::Or => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let expr1 = self.resolve_rvalue(&args[0])?;
@@ -237,9 +237,9 @@ impl<'s, 'p> Resolver<'s>
                     if expr2.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(args[1].span, expr2.typ));}
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Call(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
                 },
-                FnName::Assign => 
+                Operation::Assign => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     
@@ -249,9 +249,9 @@ impl<'s, 'p> Resolver<'s>
                     if lhs_expr.typ != rhs_expr.typ {return Err(ResError::TypeMismatch(args[1].span, rhs_expr.typ));}
 
                     typ = lhs_expr.typ;
-                    data = ResExprEnum::Call(*f, vec![lhs_expr, rhs_expr]);
+                    data = ResExprEnum::Op(*f, vec![lhs_expr, rhs_expr]);
                 },
-                FnName::Ternary => 
+                Operation::Ternary => 
                 {
                     if args.len() != 3 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let cond_expr = self.resolve_rvalue(&args[0])?;
@@ -264,7 +264,7 @@ impl<'s, 'p> Resolver<'s>
                     if true_expr.typ != false_expr.typ {return Err(ResError::TypeMismatch(args[2].span, false_expr.typ));}
 
                     typ = true_expr.typ;
-                    data = ResExprEnum::Call(*f, vec![cond_expr, true_expr, false_expr]);
+                    data = ResExprEnum::Op(*f, vec![cond_expr, true_expr, false_expr]);
                 },
             }
         }
@@ -290,9 +290,9 @@ impl<'s, 'p> Resolver<'s>
 
                 return Err(ResError::IdentifierNotFound(expr.span, x));
             },
-            ExprEnum::Call(f, args) => match f
+            ExprEnum::Op(f, args) => match f
             {
-                FnName::Assign => 
+                Operation::Assign => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     
@@ -302,9 +302,9 @@ impl<'s, 'p> Resolver<'s>
                     if lhs_expr.typ != rhs_expr.typ {return Err(ResError::TypeMismatch(args[1].span, rhs_expr.typ));}
 
                     typ = lhs_expr.typ;
-                    data = ResExprEnum::Call(*f, vec![lhs_expr, rhs_expr]);
+                    data = ResExprEnum::Op(*f, vec![lhs_expr, rhs_expr]);
                 },
-                FnName::Ternary => 
+                Operation::Ternary => 
                 {
                     if args.len() != 3 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let cond_expr = self.resolve_rvalue(&args[0])?;
@@ -317,7 +317,7 @@ impl<'s, 'p> Resolver<'s>
                     if true_expr.typ != false_expr.typ {return Err(ResError::TypeMismatch(args[2].span, false_expr.typ));}
 
                     typ = true_expr.typ;
-                    data = ResExprEnum::Call(*f, vec![cond_expr, true_expr, false_expr]);
+                    data = ResExprEnum::Op(*f, vec![cond_expr, true_expr, false_expr]);
                 },
                 _ => return Err(ResError::ExpectedLvalue(expr.span)),
             },

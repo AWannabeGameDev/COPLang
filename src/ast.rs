@@ -4,7 +4,7 @@ use crate::lexer::*;
 
 // In the future add a variant for custom functions
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum FnName
+pub enum Operation
 {
     Negate, Not, Print,
     Add, Sub, Mul, Div,
@@ -20,7 +20,7 @@ pub enum ExprEnum<'a>
 {
     Literal(Literal), // -> copy the value into the corresponding component slot in workspace
     Identifier(&'a [u8]), // -> Stack(i64) -> copy this entity into workspace
-    Call(FnName, Vec<Expr<'a>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
+    Op(Operation, Vec<Expr<'a>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
 }
 
 #[derive(PartialEq, Debug)]

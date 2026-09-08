@@ -98,58 +98,58 @@ ATOM: AtomType =
 
 ASSN: Expr<'s> =
 {
-    <start:@L> <l:TERN> "=" <r:ASSN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Assign, vec![l, r])},
+    <start:@L> <l:TERN> "=" <r:ASSN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Assign, vec![l, r])},
     <e:TERN> => e
 }
 
 TERN: Expr<'s> =
 {
-    <start:@L> <p:LOG> "?" <i:TERN> ":" <e:TERN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Ternary, vec![p, i, e])},
+    <start:@L> <p:LOG> "?" <i:TERN> ":" <e:TERN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Ternary, vec![p, i, e])},
     <e:LOG> => e
 }
 
 LOG: Expr<'s> =
 {
-    <start:@L> <l:LOG> "&&" <r:EQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::And, vec![l, r])},
-    <start:@L> <l:LOG> "||" <r:EQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Or, vec![l, r])},
+    <start:@L> <l:LOG> "&&" <r:EQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::And, vec![l, r])},
+    <start:@L> <l:LOG> "||" <r:EQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Or, vec![l, r])},
     <e:EQ> => e
 }
 
 EQ: Expr<'s> =
 {
-    <start:@L> <l:EQ> "==" <r:INEQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::EqualTo, vec![l, r])},
-    <start:@L> <l:EQ> "!=" <r:INEQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::NotEqualTo, vec![l, r])},
+    <start:@L> <l:EQ> "==" <r:INEQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::EqualTo, vec![l, r])},
+    <start:@L> <l:EQ> "!=" <r:INEQ> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::NotEqualTo, vec![l, r])},
     <e:INEQ> => e
 }
 
 INEQ: Expr<'s> =
 {
-    <start:@L> <l:INEQ> ">" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Greater, vec![l, r])},
-    <start:@L> <l:INEQ> "<" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Lesser, vec![l, r])},
-    <start:@L> <l:INEQ> ">=" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::GreaterEq, vec![l, r])},
-    <start:@L> <l:INEQ> "<=" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::LesserEq, vec![l, r])},
+    <start:@L> <l:INEQ> ">" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Greater, vec![l, r])},
+    <start:@L> <l:INEQ> "<" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Lesser, vec![l, r])},
+    <start:@L> <l:INEQ> ">=" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::GreaterEq, vec![l, r])},
+    <start:@L> <l:INEQ> "<=" <r:ADD> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::LesserEq, vec![l, r])},
     <e:ADD> => e
 }
 
 ADD: Expr<'s> =
 {
-    <start:@L> <l:ADD> "+" <r:FACT> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Add, vec![l, r])},
-    <start:@L> <l:ADD> "-" <r:FACT> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Sub, vec![l, r])},
+    <start:@L> <l:ADD> "+" <r:FACT> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Add, vec![l, r])},
+    <start:@L> <l:ADD> "-" <r:FACT> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Sub, vec![l, r])},
     <e:FACT> => e
 }
 
 FACT: Expr<'s> =
 {
-    <start:@L> <l:FACT> "*" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Mul, vec![l, r])},
-    <start:@L> <l:FACT> "/" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Div, vec![l, r])},
+    <start:@L> <l:FACT> "*" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Mul, vec![l, r])},
+    <start:@L> <l:FACT> "/" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Div, vec![l, r])},
     <e:UN> => e
 }
 
 UN: Expr<'s> =
 {
-    <start:@L> "!" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Not, vec![e])},
-    <start:@L> "-" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Negate, vec![e])},
-    <start:@L> "print" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Call(FnName::Print, vec![e])},
+    <start:@L> "!" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Not, vec![e])},
+    <start:@L> "-" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Negate, vec![e])},
+    <start:@L> "print" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Print, vec![e])},
     <e:GRP> => e
 }
 

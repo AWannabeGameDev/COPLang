@@ -79,19 +79,19 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-impl fmt::Display for FnName
+impl fmt::Display for Operation
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         let s = match self
         {
-            FnName::Negate => "-", FnName::Not => "!", FnName::Print => "print",
-            FnName::Add => "+", FnName::Sub => "-", FnName::Mul => "*", FnName::Div => "/",
-            FnName::EqualTo => "==", FnName::NotEqualTo => "!=",
-            FnName::Greater => ">", FnName::Lesser => "<", 
-            FnName::GreaterEq => ">=", FnName::LesserEq => "<=",
-            FnName::And => "&&", FnName::Or => "||",
-            FnName::Assign => "=", FnName::Ternary => "?:",
+            Operation::Negate => "-", Operation::Not => "!", Operation::Print => "print",
+            Operation::Add => "+", Operation::Sub => "-", Operation::Mul => "*", Operation::Div => "/",
+            Operation::EqualTo => "==", Operation::NotEqualTo => "!=",
+            Operation::Greater => ">", Operation::Lesser => "<", 
+            Operation::GreaterEq => ">=", Operation::LesserEq => "<=",
+            Operation::And => "&&", Operation::Or => "||",
+            Operation::Assign => "=", Operation::Ternary => "?:",
         };
         write!(f, "{}", s)
     }
@@ -131,7 +131,7 @@ impl<'a> fmt::Display for ExprEnum<'a>
         {
             ExprEnum::Literal(lit) => write!(f, "{}", lit),
             ExprEnum::Identifier(id) => write!(f, "{}", String::from_utf8_lossy(id)),
-            ExprEnum::Call(func, args) => 
+            ExprEnum::Op(func, args) => 
             {
                 write!(f, "({}", func)?;
                 for arg in args
@@ -179,7 +179,7 @@ impl fmt::Display for ResExprEnum
         {
             ResExprEnum::Literal(lit) => write!(f, "{}", lit),
             ResExprEnum::StackBinding(idx) => write!(f, "$env[{}]", idx),
-            ResExprEnum::Call(func, args) => 
+            ResExprEnum::Op(func, args) => 
             {
                 write!(f, "({}", func)?;
                 for arg in args
@@ -227,7 +227,7 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::ArgCountMismatch(span) => 
             println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::TypeMismatch(span, typ) => 
-            println!("Found expression '{}' of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), typ, span.start, span.end),
+            println!("Expression '{}' of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), typ, span.start, span.end),
         ResError::ExpectedLvalue(span) => 
             println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::Redecl(span) => 
