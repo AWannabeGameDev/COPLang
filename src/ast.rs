@@ -31,23 +31,27 @@ pub struct Expr<'a>
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ComptType
+pub enum AtomType
 {
     Int, Float, Bool
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum EnttType
+pub enum VarType
 {
-    Compt(ComptType),
+    Atom(AtomType),
     Unit
 }
 
 #[derive(PartialEq, Debug)]
+pub struct StmtBlock<'a>(pub Vec<Stmt<'a>>);
+
+#[derive(PartialEq, Debug)]
 pub enum StmtEnum<'a>
 {
-    Decl(EnttType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
+    Decl(VarType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
     Expr(Expr<'a>), // -> evaluate
+    Block(StmtBlock<'a>),
     Error
 }
 
@@ -57,6 +61,3 @@ pub struct Stmt<'a>
     pub span: Range<usize>,
     pub data: StmtEnum<'a>
 }
-
-#[derive(Debug)]
-pub struct AST<'a>(pub Vec<Stmt<'a>>);

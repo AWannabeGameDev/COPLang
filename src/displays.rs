@@ -57,12 +57,12 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Float => write!(f, "Float"),
             Token::Bool => write!(f, "Bool"),
             Token::Print => write!(f, "print"),
-            Token::Compt => write!(f, "compt"),
+            Token::Struct => write!(f, "struct"),
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
             Token::While => write!(f, "while"),
             Token::For => write!(f, "for"),
-            Token::Entt => write!(f, "entt"),
+            Token::Let => write!(f, "let"),
             
             // Identifiers
             Token::Identifier(bytes) => {
@@ -97,28 +97,28 @@ impl fmt::Display for FnName
     }
 }
 
-impl fmt::Display for ComptType
+impl fmt::Display for AtomType
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         let s = match self
         {
-            ComptType::Int => "Int",
-            ComptType::Float => "Float",
-            ComptType::Bool => "Bool",
+            AtomType::Int => "Int",
+            AtomType::Float => "Float",
+            AtomType::Bool => "Bool",
         };
         write!(f, "{}", s)
     }
 }
 
-impl fmt::Display for EnttType
+impl fmt::Display for VarType
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
-            EnttType::Compt(c) => write!(f, "{}", c),
-            EnttType::Unit => write!(f, "unit"),
+            VarType::Atom(c) => write!(f, "{}", c),
+            VarType::Unit => write!(f, "unit"),
         }
     }
 }
@@ -150,22 +150,24 @@ impl<'a> fmt::Display for StmtEnum<'a>
     {
         match self
         {
-            StmtEnum::Decl(typ, id, expr) => write!(f, "entt {}: {} = {};", String::from_utf8_lossy(id), typ, expr.data),
+            StmtEnum::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", String::from_utf8_lossy(id), typ, expr.data),
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
+            StmtEnum::Block(block) => write!(f, "{}", block),
             StmtEnum::Error => write!(f, "<Error>;")
         }
     }
 }
 
-impl<'a> fmt::Display for AST<'a>
+impl<'a> fmt::Display for StmtBlock<'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
+        writeln!(f, "{{")?;
         for stmt in &self.0
         {
             writeln!(f, "{}", stmt.data)?;
         }
-        Ok(())
+        write!(f, "}}")
     }
 }
 
@@ -198,19 +200,21 @@ impl fmt::Display for ResStmt
         {
             ResStmt::Decl(expr) => write!(f, "decl {};", expr.data),
             ResStmt::Expr(expr) => write!(f, "{};", expr.data),
+            ResStmt::Block(res_block) => write!(f, "{}", res_block),
         }
     }
 }
 
-impl fmt::Display for ResAST
+impl fmt::Display for ResBlock
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
-        for stmt in &self.0
+        writeln!(f, "{{")?;
+        for stmt in &self.stmts
         {
             writeln!(f, "{}", stmt)?;
         }
-        Ok(())
+        write!(f, "}}")
     }
 }
 
@@ -222,8 +226,8 @@ pub fn print_res_err(err: ResError, src: &[u8])
             println!("Undeclared identifier '{}' at span {}:{}.", String::from_utf8_lossy(iden), span.start, span.end),
         ResError::ArgCountMismatch(span) => 
             println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
-        ResError::TypeMismatch(span) => 
-            println!("Found expression of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+        ResError::TypeMismatch(span, typ) => 
+            println!("Found expression '{}' of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), typ, span.start, span.end),
         ResError::ExpectedLvalue(span) => 
             println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::Redecl(span) => 

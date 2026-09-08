@@ -51,12 +51,12 @@ pub enum Token<'a>
     #[token("Float")] Float,
     #[token("Bool")] Bool,
     #[token("print")] Print, 
-    #[token("compt")] Compt, 
+    #[token("struct")] Struct, 
     #[token("if")] If, 
     #[token("else")] Else, 
     #[token("while")] While, 
     #[token("for")] For,
-    #[token("entt")] Entt,
+    #[token("let")] Let,
     
     // Identifiers (borrowed directly from source as a byte slice)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().as_bytes())]

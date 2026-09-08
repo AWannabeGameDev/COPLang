@@ -69,7 +69,7 @@ fn main()
 
     let parser = PROGParser::new();
     let mut parse_errs: Vec<ParseError<usize, Token, ()>> = Vec::new();
-    let ast = parser.parse(&mut parse_errs, tokens.into_iter().map(|(token, span)| Ok((span.start, token, span.end)))).unwrap();
+    let block = parser.parse(&mut parse_errs, tokens.into_iter().map(|(token, span)| Ok((span.start, token, span.end)))).unwrap();
 
     if parse_errs.len() > 0
     {
@@ -101,11 +101,11 @@ fn main()
     }
     else
     {
-        println!("Successfully parsed:\n{ast}")
+        println!("Successfully parsed:\n{block}\n")
     }
 
     let mut resolver = Resolver::new();
-    let (res_ast, res_errors) = resolver.resolve(&ast);
+    let (res_block, res_errors) = resolver.resolve_block(&block);
 
     if res_errors.len() > 0
     {
@@ -113,10 +113,9 @@ fn main()
     }
     else
     {
-        println!("Successfully resolved:\n{res_ast}")
+        println!("Successfully resolved:\n{res_block}\n");
+        println!("--OUTPUT--");
+        let mut walker = TreeWalker::new();
+        walker.execute_block(&res_block);
     }
-
-    println!("--OUTPUT--");
-    let mut walker = TreeWalker::new();
-    walker.execute(&res_ast);
 }

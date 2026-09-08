@@ -11,20 +11,23 @@ impl TreeWalker
 {
     pub fn new() -> Self {Self {stack: Vec::new()}}
 
-    pub fn execute(&mut self, ast: &ResAST)
+    pub fn execute_block(&mut self, block: &ResBlock)
     {
-        for stmt in ast.0.iter()
+        for stmt in block.stmts.iter()
         {
             match stmt
             {
-                ResStmt::Decl(expr) => {let eval = self.eval(expr); self.stack.push(eval);},
+                ResStmt::Decl(expr) => {let eval = self.eval(expr); self.stack.push(eval)},
                 ResStmt::Expr(expr) => 
                 {
                     let val = self.eval(expr);
-                    if expr.typ != EnttType::Unit {unsafe {drop(Box::from_raw(val));}}
-                }
+                    if expr.typ != VarType::Unit {unsafe {drop(Box::from_raw(val))}}
+                },
+                ResStmt::Block(nest_block) => self.execute_block(nest_block),
             }
         }
+
+        while self.stack.len() > block.base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()));}}
     }
 
     fn eval(&mut self, expr: &ResExpr) -> *mut [u8]
@@ -49,8 +52,8 @@ impl TreeWalker
                     let ret = self.eval(&args[0]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(ret as *mut i64) = -*(ret as *mut i64);},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(ret as *mut f64) = -*(ret as *mut f64);},
+                        VarType::Atom(AtomType::Int) => unsafe {*(ret as *mut i64) = -*(ret as *mut i64);},
+                        VarType::Atom(AtomType::Float) => unsafe {*(ret as *mut f64) = -*(ret as *mut f64);},
                         _ => unreachable!()
                     }
 
@@ -68,9 +71,9 @@ impl TreeWalker
                     let arg = self.eval(&args[0]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {println!("{}", *(arg as *mut i64))},
-                        EnttType::Compt(ComptType::Float) => unsafe {println!("{}", *(arg as *mut f64))},
-                        EnttType::Compt(ComptType::Bool) => unsafe {println!("{}", *(arg as *mut u8) != 0)},
+                        VarType::Atom(AtomType::Int) => unsafe {println!("{}", *(arg as *mut i64))},
+                        VarType::Atom(AtomType::Float) => unsafe {println!("{}", *(arg as *mut f64))},
+                        VarType::Atom(AtomType::Bool) => unsafe {println!("{}", *(arg as *mut u8) != 0)},
                         _ => unreachable!()
                     };
 
@@ -83,8 +86,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) += *(rhs as *mut i64);},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) += *(rhs as *mut f64);},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) += *(rhs as *mut i64);},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) += *(rhs as *mut f64);},
                         _ => unreachable!()
                     }
 
@@ -97,8 +100,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) -= *(rhs as *mut i64);},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) -= *(rhs as *mut f64);},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) -= *(rhs as *mut i64);},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) -= *(rhs as *mut f64);},
                         _ => unreachable!()
                     }
 
@@ -111,8 +114,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) *= *(rhs as *mut i64);},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) *= *(rhs as *mut f64);},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) *= *(rhs as *mut i64);},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) *= *(rhs as *mut f64);},
                         _ => unreachable!()
                     }
 
@@ -125,8 +128,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) /= *(rhs as *mut i64);},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) /= *(rhs as *mut f64);},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) /= *(rhs as *mut i64);},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) /= *(rhs as *mut f64);},
                         _ => unreachable!()
                     }
 
@@ -139,9 +142,9 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) == *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) == *(rhs as *mut f64)},
-                        EnttType::Compt(ComptType::Bool) => unsafe {*(lhs as *mut u8) == *(rhs as *mut u8)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) == *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) == *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Bool) => unsafe {*(lhs as *mut u8) == *(rhs as *mut u8)},
                         _ => unreachable!()
                     };
 
@@ -154,9 +157,9 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) != *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) != *(rhs as *mut f64)},
-                        EnttType::Compt(ComptType::Bool) => unsafe {*(lhs as *mut u8) != *(rhs as *mut u8)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) != *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) != *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Bool) => unsafe {*(lhs as *mut u8) != *(rhs as *mut u8)},
                         _ => unreachable!()
                     };
 
@@ -169,8 +172,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) > *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) > *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) > *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) > *(rhs as *mut f64)},
                         _ => unreachable!()
                     };
 
@@ -183,8 +186,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) < *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) < *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) < *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) < *(rhs as *mut f64)},
                         _ => unreachable!()
                     };
 
@@ -197,8 +200,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) >= *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) >= *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) >= *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) >= *(rhs as *mut f64)},
                         _ => unreachable!()
                     };
 
@@ -211,8 +214,8 @@ impl TreeWalker
                     let rhs = self.eval(&args[1]);
                     let res = match args[0].typ
                     {
-                        EnttType::Compt(ComptType::Int) => unsafe {*(lhs as *mut i64) <= *(rhs as *mut i64)},
-                        EnttType::Compt(ComptType::Float) => unsafe {*(lhs as *mut f64) <= *(rhs as *mut f64)},
+                        VarType::Atom(AtomType::Int) => unsafe {*(lhs as *mut i64) <= *(rhs as *mut i64)},
+                        VarType::Atom(AtomType::Float) => unsafe {*(lhs as *mut f64) <= *(rhs as *mut f64)},
                         _ => unreachable!()
                     };
 

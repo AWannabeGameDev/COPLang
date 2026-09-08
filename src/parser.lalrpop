@@ -46,12 +46,12 @@ extern
         "Float" => Token::Float,
         "Bool" => Token::Bool,
         "print" => Token::Print,
-        "compt" => Token::Compt,
+        "struct" => Token::Struct,
         "if" => Token::If,
         "else" => Token::Else,
         "while" => Token::While,
         "for" => Token::For,
-        "entt" => Token::Entt,
+        "let" => Token::Let,
 
         "iden" => Token::Identifier(<&'s [u8]>),
         "literal" => Token::Literal(<Literal>),
@@ -60,15 +60,21 @@ extern
     }
 }
 
-pub PROG: AST<'s> =
+pub PROG: StmtBlock<'s> =
 {
-    <stmts:STMT*> => AST(stmts)
+    <block:BLOCK> => block
+}
+
+BLOCK: StmtBlock<'s> =
+{
+    <stmts:STMT*> => StmtBlock(stmts)
 }
 
 STMT: Stmt<'s> =
 {
-    <start:@L> "entt" <id:"iden"> ":" <typ:ENTT> "=" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, expr)},
+    <start:@L> "let" <id:"iden"> ":" <typ:TYPE> "=" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, expr)},
     <start:@L> <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Expr(expr)},
+    <start:@L> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Block(block)},
     <start:@L> <err:!> ";" <end:@R> =>
     {
         errors.push(err.error);
@@ -77,17 +83,17 @@ STMT: Stmt<'s> =
     <start:@L> <err:"<err>"> <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Error}
 }
 
-ENTT: EnttType =
+TYPE: VarType =
 {
-    <c:COMPT> => EnttType::Compt(c),
-    "[" "]" => EnttType::Unit
+    <c:ATOM> => VarType::Atom(c),
+    "[" "]" => VarType::Unit
 }
 
-COMPT: ComptType =
+ATOM: AtomType =
 {
-    "Int" => ComptType::Int,
-    "Float" => ComptType::Float,
-    "Bool" => ComptType::Bool,
+    "Int" => AtomType::Int,
+    "Float" => AtomType::Float,
+    "Bool" => AtomType::Bool,
 }
 
 ASSN: Expr<'s> =
