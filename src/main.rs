@@ -105,11 +105,11 @@ fn main()
     }
 
     let mut resolver = Resolver::new();
-    let (res_block, res_errors) = resolver.resolve_block(&block);
+    let res_block = resolver.resolve_block(&block);
 
-    if res_errors.len() > 0
+    if resolver.errors.len() > 0
     {
-        for err in res_errors {print!("Resolution error: "); print_res_err(err, src.as_bytes());}
+        for err in resolver.errors {print!("Resolution error: "); print_res_err(err, src.as_bytes());}
     }
     else
     {

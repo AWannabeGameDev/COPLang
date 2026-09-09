@@ -70,11 +70,24 @@ BLOCK: StmtBlock<'s> =
     <stmts:STMT*> => StmtBlock(stmts)
 }
 
+IFELSE: IfElseBlock<'s> =
+{
+    "if" <cond:ASSN> "{" <block:BLOCK> "}" <els:ELSE> => IfElseBlock {cond, block, els}
+}
+
+ELSE: ElseBlock<'s> =
+{
+    => ElseBlock::None,
+    "else" "{" <block:BLOCK> "}" => ElseBlock::Else(block),
+    "else" <ifelse:IFELSE> => ElseBlock::ElseIf(Box::new(ifelse))
+}
+
 STMT: Stmt<'s> =
 {
     <start:@L> "let" <id:"iden"> ":" <typ:TYPE> "=" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, expr)},
     <start:@L> <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Expr(expr)},
     <start:@L> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Block(block)},
+    <start:@L> <ifelse:IFELSE> <end:@R> => Stmt {span: Range{start, end}, data: StmtEnum::Cond(ifelse)},
     <start:@L> <err:!> ";" <end:@R> =>
     {
         errors.push(err.error);

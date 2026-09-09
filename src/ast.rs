@@ -16,18 +16,18 @@ pub enum Operation
 }
 
 #[derive(PartialEq, Debug)]
-pub enum ExprEnum<'a>
+pub enum ExprEnum<'s>
 {
     Literal(Literal), // -> copy the value into the corresponding component slot in workspace
-    Identifier(&'a [u8]), // -> Stack(i64) -> copy this entity into workspace
-    Op(Operation, Vec<Expr<'a>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
+    Identifier(&'s [u8]), // -> Stack(i64) -> copy this entity into workspace
+    Op(Operation, Vec<Expr<'s>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
 }
 
 #[derive(PartialEq, Debug)]
-pub struct Expr<'a>
+pub struct Expr<'s>
 {
     pub span: Range<usize>,
-    pub data: ExprEnum<'a>
+    pub data: ExprEnum<'s>
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -44,20 +44,37 @@ pub enum VarType
 }
 
 #[derive(PartialEq, Debug)]
-pub struct StmtBlock<'a>(pub Vec<Stmt<'a>>);
+pub struct StmtBlock<'s>(pub Vec<Stmt<'s>>);
 
 #[derive(PartialEq, Debug)]
-pub enum StmtEnum<'a>
+pub struct IfElseBlock<'s>
 {
-    Decl(VarType, &'a [u8], Expr<'a>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
-    Expr(Expr<'a>), // -> evaluate
-    Block(StmtBlock<'a>),
+    pub cond: Expr<'s>,
+    pub block: StmtBlock<'s>,
+    pub els: ElseBlock<'s>
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ElseBlock<'s>
+{
+    None,
+    Else(StmtBlock<'s>),
+    ElseIf(Box<IfElseBlock<'s>>)
+}
+
+#[derive(PartialEq, Debug)]
+pub enum StmtEnum<'s>
+{
+    Decl(VarType, &'s [u8], Expr<'s>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
+    Expr(Expr<'s>), // -> evaluate
+    Block(StmtBlock<'s>),
+    Cond(IfElseBlock<'s>),
     Error
 }
 
 #[derive(PartialEq, Debug)]
-pub struct Stmt<'a>
+pub struct Stmt<'s>
 {
     pub span: Range<usize>,
-    pub data: StmtEnum<'a>
+    pub data: StmtEnum<'s>
 }

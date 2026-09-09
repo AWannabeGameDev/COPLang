@@ -123,7 +123,7 @@ impl fmt::Display for VarType
     }
 }
 
-impl<'a> fmt::Display for ExprEnum<'a>
+impl<'s> fmt::Display for ExprEnum<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -131,9 +131,9 @@ impl<'a> fmt::Display for ExprEnum<'a>
         {
             ExprEnum::Literal(lit) => write!(f, "{}", lit),
             ExprEnum::Identifier(id) => write!(f, "{}", String::from_utf8_lossy(id)),
-            ExprEnum::Op(func, args) => 
+            ExprEnum::Op(op, args) => 
             {
-                write!(f, "({}", func)?;
+                write!(f, "({}", op)?;
                 for arg in args
                 {
                     write!(f, " {}", arg.data)?;
@@ -144,7 +144,48 @@ impl<'a> fmt::Display for ExprEnum<'a>
     }
 }
 
-impl<'a> fmt::Display for StmtEnum<'a>
+impl<'s> fmt::Display for StmtBlock<'s>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        if self.0.is_empty()
+        {
+            write!(f, "{{}}")
+        }
+        else
+        {
+            writeln!(f, "{{")?;
+            for stmt in &self.0
+            {
+                writeln!(f, "{}", stmt.data)?;
+            }
+            write!(f, "}}")
+        }
+    }
+}
+
+impl<'s> fmt::Display for IfElseBlock<'s>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        write!(f, "if {} {}{}", self.cond.data, self.block, self.els)
+    }
+}
+
+impl<'s> fmt::Display for ElseBlock<'s>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            ElseBlock::None => Ok(()),
+            ElseBlock::Else(block) => write!(f, " else {}", block),
+            ElseBlock::ElseIf(if_else) => write!(f, " else {}", if_else),
+        }
+    }
+}
+
+impl<'s> fmt::Display for StmtEnum<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -153,21 +194,9 @@ impl<'a> fmt::Display for StmtEnum<'a>
             StmtEnum::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", String::from_utf8_lossy(id), typ, expr.data),
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
             StmtEnum::Block(block) => write!(f, "{}", block),
-            StmtEnum::Error => write!(f, "<Error>;")
+            StmtEnum::Cond(if_else) => write!(f, "{}", if_else),
+            StmtEnum::Error => write!(f, "<Error>;"),
         }
-    }
-}
-
-impl<'a> fmt::Display for StmtBlock<'a>
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        writeln!(f, "{{")?;
-        for stmt in &self.0
-        {
-            writeln!(f, "{}", stmt.data)?;
-        }
-        write!(f, "}}")
     }
 }
 
@@ -179,15 +208,56 @@ impl fmt::Display for ResExprEnum
         {
             ResExprEnum::Literal(lit) => write!(f, "{}", lit),
             ResExprEnum::StackBinding(idx) => write!(f, "$env[{}]", idx),
-            ResExprEnum::Op(func, args) => 
+            ResExprEnum::Op(op, args) => 
             {
-                write!(f, "({}", func)?;
+                write!(f, "({}", op)?;
                 for arg in args
                 {
                     write!(f, " {}", arg.data)?;
                 }
                 write!(f, ")")
             }
+        }
+    }
+}
+
+impl fmt::Display for ResBlock
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        if self.stmts.is_empty()
+        {
+            write!(f, "{{}}")
+        }
+        else
+        {
+            writeln!(f, "{{")?;
+            for stmt in &self.stmts
+            {
+                writeln!(f, "{}", stmt)?;
+            }
+            write!(f, "}}")
+        }
+    }
+}
+
+impl fmt::Display for ResIfElse
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        write!(f, "if {} {}{}", self.cond.data, self.block, self.els)
+    }
+}
+
+impl fmt::Display for ResElse
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        match self
+        {
+            ResElse::None => Ok(()),
+            ResElse::Else(block) => write!(f, " else {}", block),
+            ResElse::ElseIf(if_else) => write!(f, " else {}", if_else),
         }
     }
 }
@@ -201,20 +271,8 @@ impl fmt::Display for ResStmt
             ResStmt::Decl(expr) => write!(f, "decl {};", expr.data),
             ResStmt::Expr(expr) => write!(f, "{};", expr.data),
             ResStmt::Block(res_block) => write!(f, "{}", res_block),
+            ResStmt::Cond(if_else) => write!(f, "{}", if_else),
         }
-    }
-}
-
-impl fmt::Display for ResBlock
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
-    {
-        writeln!(f, "{{")?;
-        for stmt in &self.stmts
-        {
-            writeln!(f, "{}", stmt)?;
-        }
-        write!(f, "}}")
     }
 }
 

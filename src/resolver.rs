@@ -35,11 +35,26 @@ pub struct ResBlock
     pub base: usize
 }
 
+pub struct ResIfElse
+{
+    pub cond: ResExpr,
+    pub block: ResBlock,
+    pub els: ResElse
+}
+
+pub enum ResElse
+{
+    None,
+    Else(ResBlock),
+    ElseIf(Box<ResIfElse>)
+}
+
 pub enum ResStmt
 {
     Decl(ResExpr),
     Expr(ResExpr),
-    Block(ResBlock)
+    Block(ResBlock),
+    Cond(ResIfElse)
 }
 
 pub enum ResError<'s>
@@ -59,21 +74,21 @@ struct Environment<'s>
 
 pub struct Resolver<'s>
 {
-    env_chain: Vec<Environment<'s>>
+    env_chain: Vec<Environment<'s>>,
+    pub errors: Vec<ResError<'s>>
 }
 
 impl<'s, 'p> Resolver<'s>
 {
     pub fn new() -> Self
     {
-        Self {env_chain: Vec::new()}
+        Self {env_chain: Vec::new(), errors: Vec::new()}
     }
 
-    pub fn resolve_block(&mut self, ast: &'p StmtBlock<'s>) -> (ResBlock, Vec<ResError<'s>>)
+    pub fn resolve_block(&mut self, ast: &'p StmtBlock<'s>) -> ResBlock
     {
         self.env_chain.push(Environment {vars: HashMap::new(), next_idx: self.env_chain.last().map(|env| env.next_idx).unwrap_or(0)});
         let mut res_block = ResBlock {stmts: Vec::new(), base: self.env_chain.last().unwrap().next_idx};
-        let mut errors = Vec::<ResError<'s>>::new();
 
         for stmt in ast.0.iter()
         {
@@ -82,12 +97,31 @@ impl<'s, 'p> Resolver<'s>
             match self.resolve_stmt(stmt)
             {
                 Ok(res_stmt) => res_block.stmts.push(res_stmt),
-                Err(err) => errors.push(err)
+                Err(err) => self.errors.push(err)
             }
         }
 
         self.env_chain.pop();
-        (res_block, errors)
+        res_block
+    }
+
+    fn resolve_cond(&mut self, if_stmt: &IfElseBlock<'s>) -> Result<ResIfElse, ResError<'s>>
+    {
+        let cond = self.resolve_rvalue(&if_stmt.cond)?;
+        if cond.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(if_stmt.cond.span, cond.typ))}
+        let block = self.resolve_block(&if_stmt.block);
+        let els = self.resolve_else(&if_stmt.els)?;
+        Ok(ResIfElse {cond, block, els})
+    }
+
+    fn resolve_else(&mut self, else_stmt: &ElseBlock<'s>) -> Result<ResElse, ResError<'s>>
+    {
+        match else_stmt
+        {
+            ElseBlock::None => Ok(ResElse::None),
+            ElseBlock::Else(block) => Ok(ResElse::Else(self.resolve_block(block))),
+            ElseBlock::ElseIf(box_if) => Ok(ResElse::ElseIf(Box::new(self.resolve_cond(box_if.as_ref())?)))
+        }
     }
 
     fn resolve_stmt(&mut self, stmt: &'p Stmt<'s>) -> Result<ResStmt, ResError<'s>>
@@ -111,12 +145,9 @@ impl<'s, 'p> Resolver<'s>
                     }
                 }
             },
-            StmtEnum::Expr(expr) => 
-            {
-                let res_expr = self.resolve_rvalue(&expr)?;
-                Ok(ResStmt::Expr(res_expr))
-            },
-            StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block).0)),
+            StmtEnum::Expr(expr) => Ok(ResStmt::Expr(self.resolve_rvalue(&expr)?)),
+            StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block))),
+            StmtEnum::Cond(if_stmt) => Ok(ResStmt::Cond(self.resolve_cond(if_stmt)?)),
             StmtEnum::Error => unreachable!()
         }
     }

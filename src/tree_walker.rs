@@ -24,10 +24,30 @@ impl TreeWalker
                     if expr.typ != VarType::Unit {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
                 },
                 ResStmt::Block(nest_block) => self.execute_block(nest_block),
+                ResStmt::Cond(if_stmt) => self.execute_cond(if_stmt)
             }
         }
 
         while self.stack.len() > block.base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()));}}
+    }
+
+    fn execute_cond(&mut self, if_stmt: &ResIfElse)
+    {
+        self.eval(&if_stmt.cond);
+        let cond = unsafe {*(self.stack.pop().unwrap() as *mut u8)} != 0;
+
+        if cond {self.execute_block(&if_stmt.block);}
+        else {self.execute_else(&if_stmt.els);}
+    }
+
+    fn execute_else(&mut self, else_stmt: &ResElse)
+    {
+        match else_stmt
+        {
+            ResElse::None => (),
+            ResElse::Else(block) => self.execute_block(block),
+            ResElse::ElseIf(if_stmt) => self.execute_cond(if_stmt)
+        }
     }
 
     // evaluates the expression and puts the result on the stack

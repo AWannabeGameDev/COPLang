@@ -1,10 +1,28 @@
 let a: Int = 10;
-let b: Int = 20;
+let b: Bool = true;
 
-{
-    let c: Int = a = b = 30;
-    print c;
+// TRAP 1: The C-style Assignment Typo
+// 'a = 20' is a valid expression that returns an Int. 
+// But the condition explicitly demands a Bool. 
+if a = 20 {
+    print a;
 }
 
-print a;
-print b;
+// TRAP 2: The Branch Scope Leak
+// 'secret' is scoped exclusively to the first block.
+// The 'else if' condition executes in the outer scope, so it should not see it.
+if b {
+    let secret: Int = 999;
+} else if secret == 999 { 
+    print secret;
+}
+
+// TRAP 3: Lvalue Type Poisoning in a Nested Scope
+// The else block correctly gets its own environment, meaning shadowing 'a' is legal.
+// But mutating that shadowed 'a' with a Bool should instantly trigger a type mismatch.
+if a == 5 {
+    let a: Bool = false;
+} else {
+    let a: Int = 100;
+    a = true; 
+}
