@@ -54,7 +54,9 @@ pub enum ResStmt
     Decl(ResExpr),
     Expr(ResExpr),
     Block(ResBlock),
-    Cond(ResIfElse)
+    Cond(ResIfElse),
+    Iter(ResExpr, ResBlock),
+    Break, Continue
 }
 
 pub enum ResError<'s>
@@ -63,18 +65,20 @@ pub enum ResError<'s>
     ArgCountMismatch(Range<usize>),
     TypeMismatch(Range<usize>, VarType),
     ExpectedLvalue(Range<usize>),
-    Redecl(Range<usize>)
+    Redecl(Range<usize>),
+    OnlyInLoop(Range<usize>)
 }
 
 struct Environment<'s>
 {
     vars: HashMap<&'s [u8], (VarType, usize)>,
-    next_idx: usize
+    next_idx: usize,
 }
 
 pub struct Resolver<'s>
 {
     env_chain: Vec<Environment<'s>>,
+    in_loop: bool,
     pub errors: Vec<ResError<'s>>
 }
 
@@ -82,7 +86,7 @@ impl<'s, 'p> Resolver<'s>
 {
     pub fn new() -> Self
     {
-        Self {env_chain: Vec::new(), errors: Vec::new()}
+        Self {env_chain: Vec::new(), in_loop: false, errors: Vec::new()}
     }
 
     pub fn resolve_block(&mut self, ast: &'p StmtBlock<'s>) -> ResBlock
@@ -148,6 +152,26 @@ impl<'s, 'p> Resolver<'s>
             StmtEnum::Expr(expr) => Ok(ResStmt::Expr(self.resolve_rvalue(&expr)?)),
             StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block))),
             StmtEnum::Cond(if_stmt) => Ok(ResStmt::Cond(self.resolve_cond(if_stmt)?)),
+            StmtEnum::Iter(cond, block) =>
+            {
+                let res_cond = self.resolve_rvalue(cond)?;
+                if res_cond.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(cond.span, res_cond.typ))}
+                
+                if self.in_loop
+                {
+                    let res_block = self.resolve_block(block);
+                    Ok(ResStmt::Iter(res_cond, res_block))
+                }
+                else
+                {
+                    self.in_loop = true;
+                    let res_block = self.resolve_block(block);
+                    self.in_loop = false;
+                    Ok(ResStmt::Iter(res_cond, res_block))
+                }
+            },
+            StmtEnum::Break => if self.in_loop {Ok(ResStmt::Break)} else {Err(ResError::OnlyInLoop(stmt.span))},
+            StmtEnum::Continue => if self.in_loop {Ok(ResStmt::Continue)} else {Err(ResError::OnlyInLoop(stmt.span))},
             StmtEnum::Error => unreachable!()
         }
     }

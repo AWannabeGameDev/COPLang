@@ -7,12 +7,21 @@ pub struct TreeWalker
     stack: Vec<*mut [u8]>
 }
 
+pub enum LoopJump
+{
+    None,
+    Continue,
+    Break
+}
+
 impl TreeWalker
 {
     pub fn new() -> Self {Self {stack: Vec::new()}}
 
-    pub fn execute_block(&mut self, block: &ResBlock)
+    pub fn execute_block(&mut self, block: &ResBlock) -> LoopJump
     {
+        let mut ret = LoopJump::None;
+
         for stmt in block.stmts.iter()
         {
             match stmt
@@ -21,30 +30,61 @@ impl TreeWalker
                 ResStmt::Expr(expr) => 
                 {
                     self.eval(expr);
-                    if expr.typ != VarType::Unit {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
+                    unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}
                 },
-                ResStmt::Block(nest_block) => self.execute_block(nest_block),
-                ResStmt::Cond(if_stmt) => self.execute_cond(if_stmt)
+                ResStmt::Block(nest_block) => ret = self.execute_block(nest_block),
+                ResStmt::Cond(if_stmt) => ret = self.execute_cond(if_stmt),
+                ResStmt::Break => ret = LoopJump::Break,
+                ResStmt::Continue => ret = LoopJump::Continue,
+                ResStmt::Iter(cond, block) => self.execute_while(cond, block)
+            }
+
+            match ret
+            {
+                LoopJump::None => (),
+                _ => break
             }
         }
 
-        while self.stack.len() > block.base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()));}}
+        while self.stack.len() > block.base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
+        ret
     }
 
-    fn execute_cond(&mut self, if_stmt: &ResIfElse)
+    fn execute_while(&mut self, cond: &ResExpr, block: &ResBlock)
+    {
+        let mut run = true;
+        while run
+        {
+            self.eval(cond);
+            let pred = unsafe {*(self.stack.pop().unwrap() as *mut u8)} != 0;
+
+            if !pred {run = false;}
+            else
+            {
+                let jump = self.execute_block(block);
+                match jump
+                {
+                    LoopJump::Break => run = false,
+                    _ => ()
+                }
+            }
+        }
+    }
+
+    fn execute_cond(&mut self, if_stmt: &ResIfElse) -> LoopJump
     {
         self.eval(&if_stmt.cond);
-        let cond = unsafe {*(self.stack.pop().unwrap() as *mut u8)} != 0;
+        let pred = unsafe {*(self.stack.pop().unwrap() as *mut u8)} != 0;
 
-        if cond {self.execute_block(&if_stmt.block);}
-        else {self.execute_else(&if_stmt.els);}
+        if pred {self.execute_block(&if_stmt.block)}
+        else {self.execute_else(&if_stmt.els)}
     }
 
-    fn execute_else(&mut self, else_stmt: &ResElse)
+    fn execute_else(&mut self, else_stmt: &ResElse) -> LoopJump
     {
         match else_stmt
         {
-            ResElse::None => (),
+            ResElse::None => LoopJump::None,
             ResElse::Else(block) => self.execute_block(block),
             ResElse::ElseIf(if_stmt) => self.execute_cond(if_stmt)
         }

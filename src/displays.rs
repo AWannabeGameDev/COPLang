@@ -61,7 +61,8 @@ impl<'a> fmt::Display for Token<'a> {
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
             Token::While => write!(f, "while"),
-            Token::For => write!(f, "for"),
+            Token::Break => write!(f, "break"),
+            Token::Continue => write!(f, "continue"),
             Token::Let => write!(f, "let"),
             
             // Identifiers
@@ -195,6 +196,9 @@ impl<'s> fmt::Display for StmtEnum<'s>
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
             StmtEnum::Block(block) => write!(f, "{}", block),
             StmtEnum::Cond(if_else) => write!(f, "{}", if_else),
+            StmtEnum::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
+            StmtEnum::Break => write!(f, "break;"),
+            StmtEnum::Continue => write!(f, "continue;"),
             StmtEnum::Error => write!(f, "<Error>;"),
         }
     }
@@ -272,6 +276,9 @@ impl fmt::Display for ResStmt
             ResStmt::Expr(expr) => write!(f, "{};", expr.data),
             ResStmt::Block(res_block) => write!(f, "{}", res_block),
             ResStmt::Cond(if_else) => write!(f, "{}", if_else),
+            ResStmt::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
+            ResStmt::Break => write!(f, "break;"),
+            ResStmt::Continue => write!(f, "continue;")
         }
     }
 }
@@ -290,5 +297,7 @@ pub fn print_res_err(err: ResError, src: &[u8])
             println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
         ResError::Redecl(span) => 
             println!("Redeclaration of an identifier in statement '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+        ResError::OnlyInLoop(span) =>
+            println!("Statement '{}' at span {}:{} can only be used in loops.", String::from_utf8_lossy(&src[span]), span.start, span.end)
     }
 }

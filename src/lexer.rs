@@ -55,7 +55,8 @@ pub enum Token<'a>
     #[token("if")] If, 
     #[token("else")] Else, 
     #[token("while")] While, 
-    #[token("for")] For,
+    #[token("break")] Break,
+    #[token("continue")] Continue,
     #[token("let")] Let,
     
     // Identifiers (borrowed directly from source as a byte slice)

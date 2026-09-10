@@ -69,6 +69,8 @@ pub enum StmtEnum<'s>
     Expr(Expr<'s>), // -> evaluate
     Block(StmtBlock<'s>),
     Cond(IfElseBlock<'s>),
+    Iter(Expr<'s>, StmtBlock<'s>),
+    Break, Continue,
     Error
 }
 
