@@ -28,6 +28,7 @@ impl<'p> TreeWalker<'p>
     fn execute_block(&mut self, block: &ResBlock, base: usize) -> LoopJump
     {
         let mut ret = LoopJump::None;
+        let old_base = self.frame_base;
         self.frame_base = base;
 
         for stmt in block.0.iter()
@@ -45,7 +46,7 @@ impl<'p> TreeWalker<'p>
                 ResStmt::Break => ret = LoopJump::Break,
                 ResStmt::Continue => ret = LoopJump::Continue,
                 ResStmt::Iter(cond, block) => self.execute_while(cond, block),
-                ResStmt::FnDecl => ()
+                ResStmt::FnDecl(_) => ()
             }
 
             match ret
@@ -56,6 +57,7 @@ impl<'p> TreeWalker<'p>
         }
 
         while self.stack.len() > self.frame_base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
+        self.frame_base = old_base;
         ret
     }
 

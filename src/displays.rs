@@ -314,7 +314,7 @@ impl<'s> fmt::Display for ResStmt
             ResStmt::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             ResStmt::Break => write!(f, "break;"),
             ResStmt::Continue => write!(f, "continue;"),
-            ResStmt::FnDecl => write!(f, "<function>")
+            ResStmt::FnDecl(idx) => write!(f, "$fenv[{}];", idx)
         }
     }
 }

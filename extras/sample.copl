@@ -1,18 +1,23 @@
-fn compute(x: Int, flag: Bool) : [] {
-    if flag {
-        print x;
+// TRAP 1: Escaping a local function scope
+{
+    fn phantom() : [] {
+        print 1;
     }
 }
+// The block is dead. The function environment is gone.
+phantom();
 
-// TRAP 1: Arity mismatch (Too few arguments)
-compute(5);
+// TRAP 2: Same-scope Redeclaration
+// The resolver must catch this in the function environment.
+fn twin() : [] {}
+fn twin(x: Int) : [] {}
 
-// TRAP 2: Parameter type mismatch (Expected Bool, found Int)
-compute(10, 10);
+// TRAP 3: Variable-to-Function Identity Theft
+// fake_fn exists in the variable environment, NOT the function environment.
+let fake_fn: Int = 10;
+fake_fn();
 
-// TRAP 3: Calling an undeclared function
-phantom_call(100);
-
-// TRAP 4: Calling a standard variable as if it were a function
-let rogue_var: Int = 77;
-rogue_var(5);
+// TRAP 4: Returning Unit to a typed variable
+fn returns_void() : [] {}
+// Func returns '[]' (Unit). Assigning Unit to Int is a type violation.
+let void_trap: Int = returns_void();

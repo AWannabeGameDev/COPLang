@@ -114,7 +114,7 @@ fn main()
     else
     {
         println!("Successfully resolved.\n\n--FUNCTION DECLARATIONS--");
-        for res_func in resolver.res_funcs.iter() {println!("{}\n", res_func)}
+        for (idx, res_func) in resolver.res_funcs.iter().enumerate() {println!("$fenv[{}]\n{}\n", idx, res_func)}
         println!("--CODE--\n{}\n", res_block);
         println!("--OUTPUT--");
         let mut walker = TreeWalker::new(&resolver.res_funcs);

@@ -90,7 +90,7 @@ pub enum ResStmt
     Cond(ResIfElse),
     Iter(ResExpr, ResBlock),
     Break, Continue,
-    FnDecl
+    FnDecl(usize)
 }
 
 pub enum ResError<'s>
@@ -115,6 +115,7 @@ pub struct Resolver<'s>
 {
     loop_depth: usize,
     func_depth: usize,
+    out_scope_limit: usize,
     env_chain: Vec<Environment<'s>>,
     pub res_funcs: Vec<ResBlock>,
     pub errors: Vec<ResError<'s>>
@@ -124,13 +125,12 @@ impl<'s, 'p> Resolver<'s>
 {
     pub fn new() -> Self
     {
-        Self {loop_depth: 0, func_depth: 0, env_chain: Vec::new(), res_funcs: Vec::new(), errors: Vec::new()}
+        Self {loop_depth: 0, func_depth: 0, out_scope_limit: 0, env_chain: Vec::new(), res_funcs: Vec::new(), errors: Vec::new()}
     }
 
     fn get_var_base_idx(&self, id: &[u8]) -> Option<(VarType, isize)>
     {
-        let take = if self.func_depth > 0 {1} else {self.env_chain.len()};
-        for env in self.env_chain.iter().rev().take(take)
+        for env in self.env_chain.iter().rev().take(self.out_scope_limit)
         {
             let Some((var_typ, idx)) = env.vars.get(id) else {continue};
             return Some((*var_typ, *idx as isize - self.env_chain.last().unwrap().base as isize));
@@ -158,6 +158,7 @@ impl<'s, 'p> Resolver<'s>
         let base = self.env_chain.last().map(|env| env.next_var_idx).unwrap_or(0);
         let next_var_idx = base + vars.len();
         self.env_chain.push(Environment {vars, funcs: HashMap::new(), next_var_idx, base});
+        self.out_scope_limit += 1;
         let mut res_block = ResBlock(Vec::new());
 
         for stmt in ast.0.iter()
@@ -234,9 +235,17 @@ impl<'s, 'p> Resolver<'s>
                         }
 
                         env.funcs.insert(id, (param_typs, *out_typ, self.res_funcs.len()));
+
+                        self.func_depth += 1;
+                        let old_limit = self.out_scope_limit;
+                        self.out_scope_limit = 0;
                         let res_block = self.resolve_block(block, vars);
+                        self.out_scope_limit = old_limit;
+                        self.func_depth -= 1;
+
                         self.res_funcs.push(res_block);
-                        Ok(ResStmt::FnDecl)
+
+                        Ok(ResStmt::FnDecl(self.res_funcs.len() - 1))
                     }
                 }
             },
