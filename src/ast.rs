@@ -7,7 +7,7 @@ use crate::lexer::*;
 pub enum Operation<'s>
 {
     Negate, Not, Print,
-    Add, Sub, Mul, Div,
+    Add, Sub, Mul, Div, Mod,
     EqualTo, NotEqualTo,
     Greater, Lesser, GreaterEq, LesserEq,
     And, Or,
@@ -19,6 +19,7 @@ pub enum Operation<'s>
 #[derive(PartialEq, Debug)]
 pub enum ExprEnum<'s>
 {
+    Unit,
     Literal(Literal),
     Identifier(&'s [u8]),
     Op(Operation<'s>, Vec<Expr<'s>>)
@@ -73,6 +74,7 @@ pub enum StmtEnum<'s>
     Cond(IfElseBlock<'s>),
     Iter(Expr<'s>, StmtBlock<'s>),
     Break, Continue,
+    Return(Expr<'s>),
     Error
 }
 

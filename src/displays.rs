@@ -3,6 +3,7 @@ use std::fmt;
 use crate::lexer::*;
 use crate::ast::*;
 use crate::resolver::*;
+use crate::tree_walker::*;
 
 impl fmt::Display for Literal
 {
@@ -39,6 +40,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Minus => write!(f, "-"),
             Token::ForSlash => write!(f, "/"),
             Token::Star => write!(f, "*"),
+            Token::Percent => write!(f, "%"),
 
             // Logic & Comparison
             Token::Eq => write!(f, "="),
@@ -65,6 +67,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Continue => write!(f, "continue"),
             Token::Let => write!(f, "let"),
             Token::Fn => write!(f, "fn"),
+            Token::Return => write!(f, "return"),
             
             // Identifiers
             Token::Identifier(bytes) => {
@@ -88,7 +91,7 @@ impl<'s> fmt::Display for Operation<'s>
         let s = match self
         {
             Operation::Negate => "-", Operation::Not => "!", Operation::Print => "print",
-            Operation::Add => "+", Operation::Sub => "-", Operation::Mul => "*", Operation::Div => "/",
+            Operation::Add => "+", Operation::Sub => "-", Operation::Mul => "*", Operation::Div => "/", Operation::Mod => "%",
             Operation::EqualTo => "==", Operation::NotEqualTo => "!=",
             Operation::Greater => ">", Operation::Lesser => "<", 
             Operation::GreaterEq => ">=", Operation::LesserEq => "<=",
@@ -121,7 +124,7 @@ impl fmt::Display for VarType
         match self
         {
             VarType::Atom(c) => write!(f, "{}", c),
-            VarType::Unit => write!(f, "unit"),
+            VarType::Unit => write!(f, "[]"),
         }
     }
 }
@@ -132,6 +135,7 @@ impl<'s> fmt::Display for ExprEnum<'s>
     {
         match self
         {
+            ExprEnum::Unit => write!(f, "unit"),
             ExprEnum::Literal(lit) => write!(f, "{}", lit),
             ExprEnum::Identifier(id) => write!(f, "{}", str::from_utf8(id).unwrap()),
             ExprEnum::Op(op, args) => 
@@ -207,6 +211,7 @@ impl<'s> fmt::Display for StmtEnum<'s>
                 for param in params {write!(f, "{}: {}, ", str::from_utf8(param.0).unwrap(), param.1)?}
                 write!(f, "): {} {}", out_typ, block)
             },
+            StmtEnum::Return(expr) => write!(f, "return {};", expr.data),
             StmtEnum::Error => write!(f, "<Error>;")
         }
     }
@@ -223,6 +228,7 @@ fn unres_op<'s>(op: &ResOp) -> Operation<'s>
         ResOp::Sub => Operation::Sub,
         ResOp::Mul => Operation::Mul,
         ResOp::Div => Operation::Div,
+        ResOp::Mod => Operation::Mod,
         ResOp::EqualTo => Operation::EqualTo,
         ResOp::NotEqualTo => Operation::NotEqualTo,
         ResOp::Greater => Operation::Greater,
@@ -243,6 +249,7 @@ impl<'s> fmt::Display for ResExprEnum
     {
         match self
         {
+            ResExprEnum::Unit => write!(f, "()"),
             ResExprEnum::Literal(lit) => write!(f, "{}", lit),
             ResExprEnum::StackBinding(idx) => write!(f, "$env[{}]", idx),
             ResExprEnum::Op(op, args) => 
@@ -314,7 +321,20 @@ impl<'s> fmt::Display for ResStmt
             ResStmt::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             ResStmt::Break => write!(f, "break;"),
             ResStmt::Continue => write!(f, "continue;"),
-            ResStmt::FnDecl(idx) => write!(f, "$fenv[{}];", idx)
+            ResStmt::FnDecl(idx) => write!(f, "fn decl $fenv[{}];", idx),
+            ResStmt::Return(expr) => write!(f, "return {};", expr.data)
+        }
+    }
+}
+
+impl fmt::Display for RuntimeError 
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result 
+    {
+        match self 
+        {
+            RuntimeError::DivZero => write!(f, "Attempted to divide by zero."),
+            RuntimeError::NoReturn => write!(f, "Function execution finished without returning a value."),
         }
     }
 }
@@ -334,6 +354,8 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::Redecl(span) => 
             println!("Redeclaration of an identifier in statement '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::OnlyInLoop(span) =>
-            println!("Statement '{}' at span {}:{} can only be used in loops.", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
+            println!("Statement '{}' at span {}:{} can only be used in loops.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::OnlyInFunc(span) =>
+            println!("Statement '{}' at span {}:{} can only be used in functions.", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
     }
 }

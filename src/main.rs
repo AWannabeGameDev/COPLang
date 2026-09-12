@@ -118,6 +118,10 @@ fn main()
         println!("--CODE--\n{}\n", res_block);
         println!("--OUTPUT--");
         let mut walker = TreeWalker::new(&resolver.res_funcs);
-        walker.execute(&res_block);
+        match walker.execute(&res_block)
+        {
+            Ok(_) => (),
+            Err(err) => println!("Runtime error: {err}")
+        }
     }
 }

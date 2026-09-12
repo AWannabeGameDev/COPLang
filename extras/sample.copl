@@ -1,23 +1,12 @@
-// TRAP 1: Escaping a local function scope
-{
-    fn phantom() : [] {
-        print 1;
+fn ackermann(m: Int, n: Int) : Int {
+    if m == 0 {
+        return n + 1;
     }
+    if m > 0 && n == 0 {
+        return ackermann(m - 1, 1);
+    }
+    return ackermann(m - 1, ackermann(m, n - 1));
 }
-// The block is dead. The function environment is gone.
-phantom();
 
-// TRAP 2: Same-scope Redeclaration
-// The resolver must catch this in the function environment.
-fn twin() : [] {}
-fn twin(x: Int) : [] {}
-
-// TRAP 3: Variable-to-Function Identity Theft
-// fake_fn exists in the variable environment, NOT the function environment.
-let fake_fn: Int = 10;
-fake_fn();
-
-// TRAP 4: Returning Unit to a typed variable
-fn returns_void() : [] {}
-// Func returns '[]' (Unit). Assigning Unit to Int is a type violation.
-let void_trap: Int = returns_void();
+let result: Int = ackermann(4, 2);
+print result; // Should heavily churn the stack and eventually print 125

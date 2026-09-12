@@ -12,10 +12,11 @@ use std::range::Range;
 use crate::lexer::*;
 use crate::ast::*;
 
+#[derive(Copy, Clone)]
 pub enum ResOp
 {
     Negate, Not, Print,
-    Add, Sub, Mul, Div,
+    Add, Sub, Mul, Div, Mod,
     EqualTo, NotEqualTo,
     Greater, Lesser, GreaterEq, LesserEq,
     And, Or,
@@ -35,6 +36,7 @@ fn res_op(op: &Operation) -> ResOp
         Operation::Sub => ResOp::Sub,
         Operation::Mul => ResOp::Mul,
         Operation::Div => ResOp::Div,
+        Operation::Mod => ResOp::Mod,
         Operation::EqualTo => ResOp::EqualTo,
         Operation::NotEqualTo => ResOp::NotEqualTo,
         Operation::Greater => ResOp::Greater,
@@ -51,6 +53,7 @@ fn res_op(op: &Operation) -> ResOp
 
 pub enum ResExprEnum
 {
+    Unit,
     Literal(Literal),
     StackBinding(isize),
     Op(ResOp, Vec<ResExpr>)
@@ -90,9 +93,11 @@ pub enum ResStmt
     Cond(ResIfElse),
     Iter(ResExpr, ResBlock),
     Break, Continue,
-    FnDecl(usize)
+    FnDecl(usize),
+    Return(ResExpr)
 }
 
+#[derive(Copy, Clone)]
 pub enum ResError<'s>
 {
     IdentifierNotFound(Range<usize>, &'s [u8]),
@@ -100,7 +105,8 @@ pub enum ResError<'s>
     TypeMismatch(Range<usize>, VarType),
     ExpectedLvalue(Range<usize>),
     Redecl(Range<usize>),
-    OnlyInLoop(Range<usize>)
+    OnlyInLoop(Range<usize>),
+    OnlyInFunc(Range<usize>)
 }
 
 struct Environment<'s>
@@ -116,6 +122,7 @@ pub struct Resolver<'s>
     loop_depth: usize,
     func_depth: usize,
     out_scope_limit: usize,
+    return_type: VarType,
     env_chain: Vec<Environment<'s>>,
     pub res_funcs: Vec<ResBlock>,
     pub errors: Vec<ResError<'s>>
@@ -125,7 +132,7 @@ impl<'s, 'p> Resolver<'s>
 {
     pub fn new() -> Self
     {
-        Self {loop_depth: 0, func_depth: 0, out_scope_limit: 0, env_chain: Vec::new(), res_funcs: Vec::new(), errors: Vec::new()}
+        Self {loop_depth: 0, func_depth: 0, out_scope_limit: 0, return_type: VarType::Unit, env_chain: Vec::new(), res_funcs: Vec::new(), errors: Vec::new()}
     }
 
     fn get_var_base_idx(&self, id: &[u8]) -> Option<(VarType, isize)>
@@ -218,8 +225,6 @@ impl<'s, 'p> Resolver<'s>
             },
             StmtEnum::FnDecl(id, params, out_typ, block) =>
             {
-                if *out_typ != VarType::Unit {todo!()}
-
                 let env = self.env_chain.last_mut().unwrap();
                 match env.funcs.get(id)
                 {
@@ -239,6 +244,7 @@ impl<'s, 'p> Resolver<'s>
                         self.func_depth += 1;
                         let old_limit = self.out_scope_limit;
                         self.out_scope_limit = 0;
+                        self.return_type = *out_typ;
                         let res_block = self.resolve_block(block, vars);
                         self.out_scope_limit = old_limit;
                         self.func_depth -= 1;
@@ -265,6 +271,16 @@ impl<'s, 'p> Resolver<'s>
             },
             StmtEnum::Break => if self.loop_depth > 0 {Ok(ResStmt::Break)} else {Err(ResError::OnlyInLoop(stmt.span))},
             StmtEnum::Continue => if self.loop_depth > 0 {Ok(ResStmt::Continue)} else {Err(ResError::OnlyInLoop(stmt.span))},
+            StmtEnum::Return(expr) =>
+            {
+                if self.func_depth <= 0 {Err(ResError::OnlyInFunc(stmt.span))}
+                else
+                {
+                    let res_expr = self.resolve_rvalue(expr)?;
+                    if res_expr.typ != self.return_type {Err(ResError::TypeMismatch(expr.span, res_expr.typ))}
+                    else {Ok(ResStmt::Return(res_expr))}
+                }
+            }
             StmtEnum::Error => unreachable!()
         }
     }
@@ -275,6 +291,7 @@ impl<'s, 'p> Resolver<'s>
         let typ: VarType;
         match &expr.data
         {
+            ExprEnum::Unit => {data = ResExprEnum::Unit; typ = VarType::Unit},
             ExprEnum::Literal(x) => match x
             {
                 Literal::Int(_) => {data = ResExprEnum::Literal(*x); typ = VarType::Atom(AtomType::Int)},
@@ -324,7 +341,7 @@ impl<'s, 'p> Resolver<'s>
                     typ = VarType::Unit;
                     data = ResExprEnum::Op(res_op(f), vec![res_expr]);
                 },
-                Operation::Add | Operation::Sub | Operation::Mul | Operation::Div => 
+                Operation::Add | Operation::Sub | Operation::Mul | Operation::Div | Operation::Mod => 
                 {
                     if args.len() != 2 {return Err(ResError::ArgCountMismatch(expr.span));}
                     let expr1 = self.resolve_rvalue(&args[0])?;
@@ -473,7 +490,7 @@ impl<'s, 'p> Resolver<'s>
                 },
                 _ => return Err(ResError::ExpectedLvalue(expr.span)),
             },
-            ExprEnum::Literal(_) => return Err(ResError::ExpectedLvalue(expr.span)),
+            ExprEnum::Literal(_) | ExprEnum::Unit => return Err(ResError::ExpectedLvalue(expr.span)),
         }
         
         Ok(ResExpr {data, typ, cat: ValCat::Lvalue})

@@ -33,6 +33,7 @@ pub enum Token<'a>
     #[token("-")] Minus, 
     #[token("/")] ForSlash, 
     #[token("*")] Star,
+    #[token("%")] Percent,
 
     // Logic & Comparison
     #[token("=")] Eq, 
@@ -59,6 +60,7 @@ pub enum Token<'a>
     #[token("continue")] Continue,
     #[token("let")] Let,
     #[token("fn")] Fn,
+    #[token("return")] Return,
     
     // Identifiers (borrowed directly from source as a byte slice)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().as_bytes())]

@@ -30,6 +30,7 @@ extern
         "-" => Token::Minus,
         "/" => Token::ForSlash,
         "*" => Token::Star,
+        "%" => Token::Percent,
 
         "=" => Token::Eq,
         "==" => Token::EqEq,
@@ -54,6 +55,7 @@ extern
         "continue" => Token::Continue,
         "let" => Token::Let,
         "fn" => Token::Fn,
+        "return" => Token::Return,
 
         "iden" => Token::Identifier(<&'s [u8]>),
         "literal" => Token::Literal(<Literal>),
@@ -94,6 +96,7 @@ STMT: Stmt<'s> =
     <start:@L> "while" <cond:ASSN> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range{start, end}, data: StmtEnum::Iter(cond, block)},
     <start:@L> "break" ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Break},
     <start:@L> "continue" ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Continue},
+    <start:@L> "return" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Return(expr)},
     <start:@L> <err:!> ";" <end:@R> =>
     {
         errors.push(err.error);
@@ -170,6 +173,7 @@ FACT: Expr<'s> =
 {
     <start:@L> <l:FACT> "*" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Mul, vec![l, r])},
     <start:@L> <l:FACT> "/" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Div, vec![l, r])},
+    <start:@L> <l:FACT> "%" <r:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Mod, vec![l, r])},
     <e:UN> => e
 }
 
@@ -183,7 +187,7 @@ UN: Expr<'s> =
 
 GRP: Expr<'s> =
 {
-    "(" <e:ASSN> ")" => e,
+    <start:@L> "(" <e:ASSN?> ")" <end:@R> => match e {Some(e) => e, None => Expr {span: Range {start, end}, data: ExprEnum::Unit}},
     <start:@L> <id:"iden"> "(" <args:COMMALIST<ASSN>> ")" <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Func(id), args)},
     <e:ENTLIT> => e,
     <start:@L> <e:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Identifier(e)}
