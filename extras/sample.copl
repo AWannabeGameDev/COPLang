@@ -1,22 +1,18 @@
-let x: Int = 0;
-
-// TRAP 1: Root-level break
-break;
-
-if x == 0 {
-    // TRAP 2: Continue inside an 'if', but no enclosing loop
-    continue;
-}
-
-while x < 5 {
-    if x == 3 {
-        // This is perfectly legal and should NOT throw an error.
-        break;
+fn compute(x: Int, flag: Bool) : [] {
+    if flag {
+        print x;
     }
-    x = x + 1;
 }
 
-{
-    // TRAP 3: Break inside an arbitrary block, no loop
-    break;
-}
+// TRAP 1: Arity mismatch (Too few arguments)
+compute(5);
+
+// TRAP 2: Parameter type mismatch (Expected Bool, found Int)
+compute(10, 10);
+
+// TRAP 3: Calling an undeclared function
+phantom_call(100);
+
+// TRAP 4: Calling a standard variable as if it were a function
+let rogue_var: Int = 77;
+rogue_var(5);

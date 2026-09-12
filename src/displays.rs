@@ -64,11 +64,12 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Break => write!(f, "break"),
             Token::Continue => write!(f, "continue"),
             Token::Let => write!(f, "let"),
+            Token::Fn => write!(f, "fn"),
             
             // Identifiers
             Token::Identifier(bytes) => {
                 // The regex only allows ASCII characters, so this unwrap is 100% safe.
-                // If you want to be paranoid, use String::from_utf8_lossy(bytes)
+                // If you want to be paranoid, use str::from_utf8(bytes)
                 let s = std::str::from_utf8(bytes).unwrap();
                 write!(f, "{}", s)
             }
@@ -80,7 +81,7 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-impl fmt::Display for Operation
+impl<'s> fmt::Display for Operation<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -93,6 +94,7 @@ impl fmt::Display for Operation
             Operation::GreaterEq => ">=", Operation::LesserEq => "<=",
             Operation::And => "&&", Operation::Or => "||",
             Operation::Assign => "=", Operation::Ternary => "?:",
+            Operation::Func(iden) => str::from_utf8(iden).unwrap()
         };
         write!(f, "{}", s)
     }
@@ -131,7 +133,7 @@ impl<'s> fmt::Display for ExprEnum<'s>
         match self
         {
             ExprEnum::Literal(lit) => write!(f, "{}", lit),
-            ExprEnum::Identifier(id) => write!(f, "{}", String::from_utf8_lossy(id)),
+            ExprEnum::Identifier(id) => write!(f, "{}", str::from_utf8(id).unwrap()),
             ExprEnum::Op(op, args) => 
             {
                 write!(f, "({}", op)?;
@@ -192,19 +194,50 @@ impl<'s> fmt::Display for StmtEnum<'s>
     {
         match self
         {
-            StmtEnum::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", String::from_utf8_lossy(id), typ, expr.data),
+            StmtEnum::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", str::from_utf8(id).unwrap(), typ, expr.data),
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
             StmtEnum::Block(block) => write!(f, "{}", block),
             StmtEnum::Cond(if_else) => write!(f, "{}", if_else),
             StmtEnum::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             StmtEnum::Break => write!(f, "break;"),
             StmtEnum::Continue => write!(f, "continue;"),
-            StmtEnum::Error => write!(f, "<Error>;"),
+            StmtEnum::FnDecl(id, params, out_typ, block) =>
+            {
+                write!(f, "{}(", str::from_utf8(id).unwrap())?;
+                for param in params {write!(f, "{}: {}, ", str::from_utf8(param.0).unwrap(), param.1)?}
+                write!(f, "): {} {}", out_typ, block)
+            },
+            StmtEnum::Error => write!(f, "<Error>;")
         }
     }
 }
 
-impl fmt::Display for ResExprEnum
+fn unres_op<'s>(op: &ResOp) -> Operation<'s>
+{
+    match op
+    {
+        ResOp::Negate => Operation::Negate,
+        ResOp::Not => Operation::Not,
+        ResOp::Print => Operation::Print,
+        ResOp::Add => Operation::Add,
+        ResOp::Sub => Operation::Sub,
+        ResOp::Mul => Operation::Mul,
+        ResOp::Div => Operation::Div,
+        ResOp::EqualTo => Operation::EqualTo,
+        ResOp::NotEqualTo => Operation::NotEqualTo,
+        ResOp::Greater => Operation::Greater,
+        ResOp::Lesser => Operation::Lesser,
+        ResOp::GreaterEq => Operation::GreaterEq,
+        ResOp::LesserEq => Operation::LesserEq,
+        ResOp::And => Operation::And,
+        ResOp::Or => Operation::Or,
+        ResOp::Assign => Operation::Assign,
+        ResOp::Ternary => Operation::Ternary,
+        ResOp::Func(_) => unreachable!()
+    }
+}
+
+impl<'s> fmt::Display for ResExprEnum
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -214,29 +247,31 @@ impl fmt::Display for ResExprEnum
             ResExprEnum::StackBinding(idx) => write!(f, "$env[{}]", idx),
             ResExprEnum::Op(op, args) => 
             {
-                write!(f, "({}", op)?;
-                for arg in args
+                match op
                 {
-                    write!(f, " {}", arg.data)?;
-                }
+                    ResOp::Func(idx) => write!(f, "($fenv[{}]", idx),
+                    _ => write!(f, "({}", unres_op(op))
+                }?;
+
+                for arg in args {write!(f, " {}", arg.data)?;}
                 write!(f, ")")
             }
         }
     }
 }
 
-impl fmt::Display for ResBlock
+impl<'s> fmt::Display for ResBlock
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
-        if self.stmts.is_empty()
+        if self.0.is_empty()
         {
             write!(f, "{{}}")
         }
         else
         {
             writeln!(f, "{{")?;
-            for stmt in &self.stmts
+            for stmt in &self.0
             {
                 writeln!(f, "{}", stmt)?;
             }
@@ -245,7 +280,7 @@ impl fmt::Display for ResBlock
     }
 }
 
-impl fmt::Display for ResIfElse
+impl<'s> fmt::Display for ResIfElse
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -253,7 +288,7 @@ impl fmt::Display for ResIfElse
     }
 }
 
-impl fmt::Display for ResElse
+impl<'s> fmt::Display for ResElse
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -266,7 +301,7 @@ impl fmt::Display for ResElse
     }
 }
 
-impl fmt::Display for ResStmt
+impl<'s> fmt::Display for ResStmt
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -278,7 +313,8 @@ impl fmt::Display for ResStmt
             ResStmt::Cond(if_else) => write!(f, "{}", if_else),
             ResStmt::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             ResStmt::Break => write!(f, "break;"),
-            ResStmt::Continue => write!(f, "continue;")
+            ResStmt::Continue => write!(f, "continue;"),
+            ResStmt::FnDecl => write!(f, "<function>")
         }
     }
 }
@@ -288,16 +324,16 @@ pub fn print_res_err(err: ResError, src: &[u8])
     match err
     {
         ResError::IdentifierNotFound(span, iden) => 
-            println!("Undeclared identifier '{}' at span {}:{}.", String::from_utf8_lossy(iden), span.start, span.end),
+            println!("Undeclared identifier '{}' at span {}:{}.", str::from_utf8(iden).unwrap(), span.start, span.end),
         ResError::ArgCountMismatch(span) => 
-            println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+            println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::TypeMismatch(span, typ) => 
-            println!("Expression '{}' of incorrect type '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), typ, span.start, span.end),
+            println!("Expression '{}' of incorrect type '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), typ, span.start, span.end),
         ResError::ExpectedLvalue(span) => 
-            println!("Expected lvalue expression, found '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+            println!("Expected lvalue expression, found '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::Redecl(span) => 
-            println!("Redeclaration of an identifier in statement '{}' at span {}:{}.", String::from_utf8_lossy(&src[span]), span.start, span.end),
+            println!("Redeclaration of an identifier in statement '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::OnlyInLoop(span) =>
-            println!("Statement '{}' at span {}:{} can only be used in loops.", String::from_utf8_lossy(&src[span]), span.start, span.end)
+            println!("Statement '{}' at span {}:{} can only be used in loops.", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
     }
 }

@@ -4,7 +4,7 @@ use crate::lexer::*;
 
 // In the future add a variant for custom functions
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum Operation
+pub enum Operation<'s>
 {
     Negate, Not, Print,
     Add, Sub, Mul, Div,
@@ -12,15 +12,16 @@ pub enum Operation
     Greater, Lesser, GreaterEq, LesserEq,
     And, Or,
     Assign,
-    Ternary
+    Ternary,
+    Func(&'s [u8])
 }
 
 #[derive(PartialEq, Debug)]
 pub enum ExprEnum<'s>
 {
-    Literal(Literal), // -> copy the value into the corresponding component slot in workspace
-    Identifier(&'s [u8]), // -> Stack(i64) -> copy this entity into workspace
-    Op(Operation, Vec<Expr<'s>>) // -> for each expression, evaluate it, create a new entity, push its id onto the call stack and copy workspace into entity. Then evaluate the return value of function
+    Literal(Literal),
+    Identifier(&'s [u8]),
+    Op(Operation<'s>, Vec<Expr<'s>>)
 }
 
 #[derive(PartialEq, Debug)]
@@ -65,8 +66,9 @@ pub enum ElseBlock<'s>
 #[derive(PartialEq, Debug)]
 pub enum StmtEnum<'s>
 {
-    Decl(VarType, &'s [u8], Expr<'s>), // create new entity, push its id to stack, evaluate expression, copy workspace to entity
-    Expr(Expr<'s>), // -> evaluate
+    Decl(VarType, &'s [u8], Expr<'s>),
+    FnDecl(&'s [u8], Vec<(&'s [u8], VarType)>, VarType, StmtBlock<'s>),
+    Expr(Expr<'s>),
     Block(StmtBlock<'s>),
     Cond(IfElseBlock<'s>),
     Iter(Expr<'s>, StmtBlock<'s>),

@@ -58,6 +58,7 @@ pub enum Token<'a>
     #[token("break")] Break,
     #[token("continue")] Continue,
     #[token("let")] Let,
+    #[token("fn")] Fn,
     
     // Identifiers (borrowed directly from source as a byte slice)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().as_bytes())]

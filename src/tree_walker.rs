@@ -2,9 +2,11 @@ use crate::lexer::*;
 use crate::ast::*;
 use crate::resolver::*;
 
-pub struct TreeWalker
+pub struct TreeWalker<'p>
 {
-    stack: Vec<*mut [u8]>
+    res_funcs: &'p Vec<ResBlock>,
+    stack: Vec<*mut [u8]>,
+    frame_base: usize
 }
 
 pub enum LoopJump
@@ -14,15 +16,21 @@ pub enum LoopJump
     Break
 }
 
-impl TreeWalker
+impl<'p> TreeWalker<'p>
 {
-    pub fn new() -> Self {Self {stack: Vec::new()}}
+    pub fn new(res_funcs: &'p Vec<ResBlock>) -> Self {Self {res_funcs, frame_base: 0, stack: Vec::new()}}
 
-    pub fn execute_block(&mut self, block: &ResBlock) -> LoopJump
+    pub fn execute(&mut self, block: &ResBlock)
+    {
+        self.execute_block(block, 0);
+    }
+
+    fn execute_block(&mut self, block: &ResBlock, base: usize) -> LoopJump
     {
         let mut ret = LoopJump::None;
+        self.frame_base = base;
 
-        for stmt in block.stmts.iter()
+        for stmt in block.0.iter()
         {
             match stmt
             {
@@ -32,11 +40,12 @@ impl TreeWalker
                     self.eval(expr);
                     unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}
                 },
-                ResStmt::Block(nest_block) => ret = self.execute_block(nest_block),
+                ResStmt::Block(nest_block) => ret = self.execute_block(nest_block, self.stack.len()),
                 ResStmt::Cond(if_stmt) => ret = self.execute_cond(if_stmt),
                 ResStmt::Break => ret = LoopJump::Break,
                 ResStmt::Continue => ret = LoopJump::Continue,
-                ResStmt::Iter(cond, block) => self.execute_while(cond, block)
+                ResStmt::Iter(cond, block) => self.execute_while(cond, block),
+                ResStmt::FnDecl => ()
             }
 
             match ret
@@ -46,7 +55,7 @@ impl TreeWalker
             }
         }
 
-        while self.stack.len() > block.base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
+        while self.stack.len() > self.frame_base {unsafe {drop(Box::from_raw(self.stack.pop().unwrap()))}}
         ret
     }
 
@@ -61,7 +70,7 @@ impl TreeWalker
             if !pred {run = false;}
             else
             {
-                let jump = self.execute_block(block);
+                let jump = self.execute_block(block, self.stack.len());
                 match jump
                 {
                     LoopJump::Break => run = false,
@@ -76,7 +85,7 @@ impl TreeWalker
         self.eval(&if_stmt.cond);
         let pred = unsafe {*(self.stack.pop().unwrap() as *mut u8)} != 0;
 
-        if pred {self.execute_block(&if_stmt.block)}
+        if pred {self.execute_block(&if_stmt.block, self.stack.len())}
         else {self.execute_else(&if_stmt.els)}
     }
 
@@ -85,7 +94,7 @@ impl TreeWalker
         match else_stmt
         {
             ResElse::None => LoopJump::None,
-            ResElse::Else(block) => self.execute_block(block),
+            ResElse::Else(block) => self.execute_block(block, self.stack.len()),
             ResElse::ElseIf(if_stmt) => self.execute_cond(if_stmt)
         }
     }
@@ -101,14 +110,18 @@ impl TreeWalker
                 Literal::Float(x) => Box::into_raw(x.to_ne_bytes().to_vec().into_boxed_slice()),
                 Literal::Bool(x) => Box::into_raw([*x as u8].to_vec().into_boxed_slice()),
             },
-            ResExprEnum::StackBinding(idx) => match &expr.cat
+            ResExprEnum::StackBinding(idx) => 
             {
-                ValCat::Lvalue => self.stack[*idx],
-                ValCat::Rvalue => unsafe {Box::into_raw((&*self.stack[*idx]).to_vec().into_boxed_slice())}
+                let var_idx = (self.frame_base as isize + *idx) as usize;
+                match &expr.cat
+                {
+                    ValCat::Lvalue => self.stack[var_idx],
+                    ValCat::Rvalue => unsafe {Box::into_raw((&*self.stack[var_idx]).to_vec().into_boxed_slice())}
+                }
             },
             ResExprEnum::Op(f, args) => match f
             {
-                Operation::Negate =>
+                ResOp::Negate =>
                 {
                     self.eval(&args[0]);
                     let ret = self.stack.pop().unwrap();
@@ -121,7 +134,7 @@ impl TreeWalker
 
                     ret
                 },
-                Operation::Not => 
+                ResOp::Not => 
                 {
                     self.eval(&args[0]);
                     let ret = self.stack.pop().unwrap();
@@ -129,7 +142,7 @@ impl TreeWalker
                     unsafe {*(ret as *mut u8) = (*(ret as *mut u8) == 0) as u8;}
                     ret
                 },
-                Operation::Print => 
+                ResOp::Print => 
                 {
                     self.eval(&args[0]);
                     let arg = self.stack.pop().unwrap();
@@ -144,7 +157,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(arg));}
                     Box::into_raw(Box::new([]))
                 },
-                Operation::Add => 
+                ResOp::Add => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -160,7 +173,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::Sub => 
+                ResOp::Sub => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -176,7 +189,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::Mul => 
+                ResOp::Mul => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -192,7 +205,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::Div => 
+                ResOp::Div => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -208,7 +221,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::EqualTo => 
+                ResOp::EqualTo => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -225,7 +238,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::NotEqualTo => 
+                ResOp::NotEqualTo => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -242,7 +255,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::Greater => 
+                ResOp::Greater => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -258,7 +271,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::Lesser => 
+                ResOp::Lesser => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -274,7 +287,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::GreaterEq => 
+                ResOp::GreaterEq => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -290,7 +303,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::LesserEq => 
+                ResOp::LesserEq => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -306,7 +319,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(lhs)); drop(Box::from_raw(rhs));}
                     Box::into_raw(Box::new([res as u8]))
                 },
-                Operation::And => 
+                ResOp::And => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -317,7 +330,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::Or => 
+                ResOp::Or => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -328,7 +341,7 @@ impl TreeWalker
                     unsafe {drop(Box::from_raw(rhs));}
                     lhs
                 },
-                Operation::Assign => 
+                ResOp::Assign => 
                 {
                     self.eval(&args[0]);
                     self.eval(&args[1]);
@@ -342,20 +355,30 @@ impl TreeWalker
                         ValCat::Rvalue => rhs
                     }
                 },
-                Operation::Ternary => 
+                ResOp::Ternary => 
                 {
                     self.eval(&args[0]);
                     let cond = self.stack.pop().unwrap();
                     let is_true = unsafe {*(cond as *mut u8) != 0};
                     unsafe {drop(Box::from_raw(cond));}
 
-                    if is_true {
+                    if is_true 
+                    {
                         self.eval(&args[1]);
                         self.stack.pop().unwrap()
-                    } else {
+                    } 
+                    else 
+                    {
                         self.eval(&args[2]);
                         self.stack.pop().unwrap()
                     }
+                },
+                ResOp::Func(fn_idx) =>
+                {
+                    let base = self.stack.len();
+                    for arg in args {self.eval(arg)}
+                    self.execute_block(&self.res_funcs[*fn_idx], base);
+                    Box::into_raw(Box::new([]))
                 },
             }
         };

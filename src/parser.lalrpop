@@ -53,6 +53,7 @@ extern
         "break" => Token::Break,
         "continue" => Token::Continue,
         "let" => Token::Let,
+        "fn" => Token::Fn,
 
         "iden" => Token::Identifier(<&'s [u8]>),
         "literal" => Token::Literal(<Literal>),
@@ -86,6 +87,7 @@ ELSE: ElseBlock<'s> =
 STMT: Stmt<'s> =
 {
     <start:@L> "let" <id:"iden"> ":" <typ:TYPE> "=" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, expr)},
+    <start:@L> "fn" <id:"iden"> "(" <typs:COMMALIST<(<"iden"> ":" <TYPE>)>> ")" ":" <out:TYPE> <end:@R> "{" <block:BLOCK> "}" => Stmt {span: Range {start, end}, data: StmtEnum::FnDecl(id, typs, out, block)},
     <start:@L> <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Expr(expr)},
     <start:@L> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Block(block)},
     <start:@L> <ifelse:IFELSE> <end:@R> => Stmt {span: Range{start, end}, data: StmtEnum::Cond(ifelse)},
@@ -98,6 +100,15 @@ STMT: Stmt<'s> =
         Stmt {span: Range {start, end}, data: StmtEnum::Error}
     },
     <start:@L> <err:"<err>"> <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Error}
+}
+
+COMMALIST<T>: Vec<T> =
+{
+    <mut vec:(<T> ",")*> <last:T?> => match last
+    {
+        None => vec,
+        Some(t) => {vec.push(t); vec}
+    }
 }
 
 TYPE: VarType =
@@ -173,6 +184,7 @@ UN: Expr<'s> =
 GRP: Expr<'s> =
 {
     "(" <e:ASSN> ")" => e,
+    <start:@L> <id:"iden"> "(" <args:COMMALIST<ASSN>> ")" <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Func(id), args)},
     <e:ENTLIT> => e,
     <start:@L> <e:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Identifier(e)}
 }

@@ -105,7 +105,7 @@ fn main()
     }
 
     let mut resolver = Resolver::new();
-    let res_block = resolver.resolve_block(&block);
+    let res_block = resolver.resolve(&block);
 
     if resolver.errors.len() > 0
     {
@@ -113,9 +113,11 @@ fn main()
     }
     else
     {
-        println!("Successfully resolved:\n{res_block}\n");
+        println!("Successfully resolved.\n\n--FUNCTION DECLARATIONS--");
+        for res_func in resolver.res_funcs.iter() {println!("{}\n", res_func)}
+        println!("--CODE--\n{}\n", res_block);
         println!("--OUTPUT--");
-        let mut walker = TreeWalker::new();
-        walker.execute_block(&res_block);
+        let mut walker = TreeWalker::new(&resolver.res_funcs);
+        walker.execute(&res_block);
     }
 }

@@ -12,11 +12,48 @@ use std::range::Range;
 use crate::lexer::*;
 use crate::ast::*;
 
+pub enum ResOp
+{
+    Negate, Not, Print,
+    Add, Sub, Mul, Div,
+    EqualTo, NotEqualTo,
+    Greater, Lesser, GreaterEq, LesserEq,
+    And, Or,
+    Assign,
+    Ternary,
+    Func(usize)
+}
+
+fn res_op(op: &Operation) -> ResOp
+{
+    match op
+    {
+        Operation::Negate => ResOp::Negate,
+        Operation::Not => ResOp::Not,
+        Operation::Print => ResOp::Print,
+        Operation::Add => ResOp::Add,
+        Operation::Sub => ResOp::Sub,
+        Operation::Mul => ResOp::Mul,
+        Operation::Div => ResOp::Div,
+        Operation::EqualTo => ResOp::EqualTo,
+        Operation::NotEqualTo => ResOp::NotEqualTo,
+        Operation::Greater => ResOp::Greater,
+        Operation::Lesser => ResOp::Lesser,
+        Operation::GreaterEq => ResOp::GreaterEq,
+        Operation::LesserEq => ResOp::LesserEq,
+        Operation::And => ResOp::And,
+        Operation::Or => ResOp::Or,
+        Operation::Assign => ResOp::Assign,
+        Operation::Ternary => ResOp::Ternary,
+        Operation::Func(_) => unreachable!()
+    }
+}
+
 pub enum ResExprEnum
 {
     Literal(Literal),
-    StackBinding(usize),
-    Op(Operation, Vec<ResExpr>)
+    StackBinding(isize),
+    Op(ResOp, Vec<ResExpr>)
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -29,11 +66,7 @@ pub struct ResExpr
     pub cat: ValCat
 }
 
-pub struct ResBlock
-{
-    pub stmts: Vec<ResStmt>,
-    pub base: usize
-}
+pub struct ResBlock(pub Vec<ResStmt>);
 
 pub struct ResIfElse
 {
@@ -56,7 +89,8 @@ pub enum ResStmt
     Block(ResBlock),
     Cond(ResIfElse),
     Iter(ResExpr, ResBlock),
-    Break, Continue
+    Break, Continue,
+    FnDecl
 }
 
 pub enum ResError<'s>
@@ -72,13 +106,17 @@ pub enum ResError<'s>
 struct Environment<'s>
 {
     vars: HashMap<&'s [u8], (VarType, usize)>,
-    next_idx: usize,
+    funcs: HashMap<&'s [u8], (Vec<VarType>, VarType, usize)>,
+    base: usize,
+    next_var_idx: usize,
 }
 
 pub struct Resolver<'s>
 {
+    loop_depth: usize,
+    func_depth: usize,
     env_chain: Vec<Environment<'s>>,
-    in_loop: bool,
+    pub res_funcs: Vec<ResBlock>,
     pub errors: Vec<ResError<'s>>
 }
 
@@ -86,13 +124,41 @@ impl<'s, 'p> Resolver<'s>
 {
     pub fn new() -> Self
     {
-        Self {env_chain: Vec::new(), in_loop: false, errors: Vec::new()}
+        Self {loop_depth: 0, func_depth: 0, env_chain: Vec::new(), res_funcs: Vec::new(), errors: Vec::new()}
     }
 
-    pub fn resolve_block(&mut self, ast: &'p StmtBlock<'s>) -> ResBlock
+    fn get_var_base_idx(&self, id: &[u8]) -> Option<(VarType, isize)>
     {
-        self.env_chain.push(Environment {vars: HashMap::new(), next_idx: self.env_chain.last().map(|env| env.next_idx).unwrap_or(0)});
-        let mut res_block = ResBlock {stmts: Vec::new(), base: self.env_chain.last().unwrap().next_idx};
+        let take = if self.func_depth > 0 {1} else {self.env_chain.len()};
+        for env in self.env_chain.iter().rev().take(take)
+        {
+            let Some((var_typ, idx)) = env.vars.get(id) else {continue};
+            return Some((*var_typ, *idx as isize - self.env_chain.last().unwrap().base as isize));
+        }
+        None
+    }
+
+    fn get_fn_idx(&self, id: &[u8]) -> Option<&(Vec<VarType>, VarType, usize)>
+    {
+        for env in self.env_chain.iter().rev()
+        {
+            let Some(ret) = env.funcs.get(id) else {continue};
+            return Some(ret)
+        }
+        None
+    }
+
+    pub fn resolve(&mut self, block: &StmtBlock<'s>) -> ResBlock
+    {
+        self.resolve_block(block, HashMap::new())
+    }
+
+    fn resolve_block(&mut self, ast: &'p StmtBlock<'s>, vars: HashMap<&'s [u8], (VarType, usize)>) -> ResBlock
+    {
+        let base = self.env_chain.last().map(|env| env.next_var_idx).unwrap_or(0);
+        let next_var_idx = base + vars.len();
+        self.env_chain.push(Environment {vars, funcs: HashMap::new(), next_var_idx, base});
+        let mut res_block = ResBlock(Vec::new());
 
         for stmt in ast.0.iter()
         {
@@ -100,7 +166,7 @@ impl<'s, 'p> Resolver<'s>
 
             match self.resolve_stmt(stmt)
             {
-                Ok(res_stmt) => res_block.stmts.push(res_stmt),
+                Ok(res_stmt) => res_block.0.push(res_stmt),
                 Err(err) => self.errors.push(err)
             }
         }
@@ -109,21 +175,21 @@ impl<'s, 'p> Resolver<'s>
         res_block
     }
 
-    fn resolve_cond(&mut self, if_stmt: &IfElseBlock<'s>) -> Result<ResIfElse, ResError<'s>>
+    fn resolve_cond(&mut self, if_stmt: &'p IfElseBlock<'s>) -> Result<ResIfElse, ResError<'s>>
     {
         let cond = self.resolve_rvalue(&if_stmt.cond)?;
         if cond.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(if_stmt.cond.span, cond.typ))}
-        let block = self.resolve_block(&if_stmt.block);
+        let block = self.resolve_block(&if_stmt.block, HashMap::new());
         let els = self.resolve_else(&if_stmt.els)?;
         Ok(ResIfElse {cond, block, els})
     }
 
-    fn resolve_else(&mut self, else_stmt: &ElseBlock<'s>) -> Result<ResElse, ResError<'s>>
+    fn resolve_else(&mut self, else_stmt: &'p ElseBlock<'s>) -> Result<ResElse, ResError<'s>>
     {
         match else_stmt
         {
             ElseBlock::None => Ok(ResElse::None),
-            ElseBlock::Else(block) => Ok(ResElse::Else(self.resolve_block(block))),
+            ElseBlock::Else(block) => Ok(ResElse::Else(self.resolve_block(block, HashMap::new()))),
             ElseBlock::ElseIf(box_if) => Ok(ResElse::ElseIf(Box::new(self.resolve_cond(box_if.as_ref())?)))
         }
     }
@@ -143,35 +209,53 @@ impl<'s, 'p> Resolver<'s>
                     Some(_) => Err(ResError::Redecl(stmt.span)),
                     None =>
                     {
-                        env.vars.insert(iden, (*typ, env.next_idx));
-                        env.next_idx += 1;
+                        env.vars.insert(iden, (*typ, env.next_var_idx));
+                        env.next_var_idx += 1;
                         Ok(ResStmt::Decl(res_expr))
                     }
                 }
             },
+            StmtEnum::FnDecl(id, params, out_typ, block) =>
+            {
+                if *out_typ != VarType::Unit {todo!()}
+
+                let env = self.env_chain.last_mut().unwrap();
+                match env.funcs.get(id)
+                {
+                    Some(_) => Err(ResError::Redecl(stmt.span)),
+                    None =>
+                    {
+                        let mut vars = HashMap::<&'s [u8], (VarType, usize)>::new();
+                        let mut param_typs = Vec::<VarType>::new();
+                        for (idx, param) in params.iter().enumerate()
+                        {
+                            vars.insert(param.0, (param.1, env.next_var_idx + idx));
+                            param_typs.push(param.1);
+                        }
+
+                        env.funcs.insert(id, (param_typs, *out_typ, self.res_funcs.len()));
+                        let res_block = self.resolve_block(block, vars);
+                        self.res_funcs.push(res_block);
+                        Ok(ResStmt::FnDecl)
+                    }
+                }
+            },
             StmtEnum::Expr(expr) => Ok(ResStmt::Expr(self.resolve_rvalue(&expr)?)),
-            StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block))),
+            StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block, HashMap::new()))),
             StmtEnum::Cond(if_stmt) => Ok(ResStmt::Cond(self.resolve_cond(if_stmt)?)),
             StmtEnum::Iter(cond, block) =>
             {
                 let res_cond = self.resolve_rvalue(cond)?;
                 if res_cond.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(cond.span, res_cond.typ))}
                 
-                if self.in_loop
-                {
-                    let res_block = self.resolve_block(block);
-                    Ok(ResStmt::Iter(res_cond, res_block))
-                }
-                else
-                {
-                    self.in_loop = true;
-                    let res_block = self.resolve_block(block);
-                    self.in_loop = false;
-                    Ok(ResStmt::Iter(res_cond, res_block))
-                }
+                self.loop_depth += 1;
+                let res_block = self.resolve_block(block, HashMap::new());
+                self.loop_depth -= 1;
+
+                Ok(ResStmt::Iter(res_cond, res_block))
             },
-            StmtEnum::Break => if self.in_loop {Ok(ResStmt::Break)} else {Err(ResError::OnlyInLoop(stmt.span))},
-            StmtEnum::Continue => if self.in_loop {Ok(ResStmt::Continue)} else {Err(ResError::OnlyInLoop(stmt.span))},
+            StmtEnum::Break => if self.loop_depth > 0 {Ok(ResStmt::Break)} else {Err(ResError::OnlyInLoop(stmt.span))},
+            StmtEnum::Continue => if self.loop_depth > 0 {Ok(ResStmt::Continue)} else {Err(ResError::OnlyInLoop(stmt.span))},
             StmtEnum::Error => unreachable!()
         }
     }
@@ -188,16 +272,10 @@ impl<'s, 'p> Resolver<'s>
                 Literal::Float(_) => {data = ResExprEnum::Literal(*x); typ = VarType::Atom(AtomType::Float)},
                 Literal::Bool(_) => {data = ResExprEnum::Literal(*x); typ = VarType::Atom(AtomType::Bool)}
             },
-            ExprEnum::Identifier(x) =>
+            ExprEnum::Identifier(id) => match self.get_var_base_idx(id)
             {
-                for env in self.env_chain.iter().rev()
-                {
-                    if let Some((var_typ, idx)) = env.vars.get(x) 
-                    {
-                        return Ok(ResExpr {data: ResExprEnum::StackBinding(*idx), typ: *var_typ, cat: ValCat::Rvalue});
-                    }
-                }
-                return Err(ResError::IdentifierNotFound(expr.span, x));
+                Some((typ, off)) => return Ok(ResExpr {data: ResExprEnum::StackBinding(off), typ, cat: ValCat::Rvalue}),
+                None => return Err(ResError::IdentifierNotFound(expr.span, id))
             },
             ExprEnum::Op(f, args) => match f
             {
@@ -213,7 +291,7 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = res_expr.typ;
-                    data = ResExprEnum::Op(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![res_expr]);
                 },
                 Operation::Not => 
                 {
@@ -227,7 +305,7 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Op(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![res_expr]);
                 },
                 Operation::Print => 
                 {
@@ -235,7 +313,7 @@ impl<'s, 'p> Resolver<'s>
                     let res_expr = self.resolve_rvalue(&args[0])?;
                     
                     typ = VarType::Unit;
-                    data = ResExprEnum::Op(*f, vec![res_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![res_expr]);
                 },
                 Operation::Add | Operation::Sub | Operation::Mul | Operation::Div => 
                 {
@@ -252,7 +330,7 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = expr1.typ;
-                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(res_op(f), vec![expr1, expr2]);
                 },
                 Operation::EqualTo | Operation::NotEqualTo => 
                 {
@@ -263,7 +341,7 @@ impl<'s, 'p> Resolver<'s>
                     if expr1.typ != expr2.typ {return Err(ResError::TypeMismatch(args[1].span, expr2.typ));}
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(res_op(f), vec![expr1, expr2]);
                 },
                 Operation::Greater | Operation::Lesser | Operation::GreaterEq | Operation::LesserEq => 
                 {
@@ -280,7 +358,7 @@ impl<'s, 'p> Resolver<'s>
                     }
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(res_op(f), vec![expr1, expr2]);
                 },
                 Operation::And | Operation::Or => 
                 {
@@ -292,7 +370,7 @@ impl<'s, 'p> Resolver<'s>
                     if expr2.typ != VarType::Atom(AtomType::Bool) {return Err(ResError::TypeMismatch(args[1].span, expr2.typ));}
 
                     typ = VarType::Atom(AtomType::Bool);
-                    data = ResExprEnum::Op(*f, vec![expr1, expr2]);
+                    data = ResExprEnum::Op(res_op(f), vec![expr1, expr2]);
                 },
                 Operation::Assign => 
                 {
@@ -304,7 +382,7 @@ impl<'s, 'p> Resolver<'s>
                     if lhs_expr.typ != rhs_expr.typ {return Err(ResError::TypeMismatch(args[1].span, rhs_expr.typ));}
 
                     typ = lhs_expr.typ;
-                    data = ResExprEnum::Op(*f, vec![lhs_expr, rhs_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![lhs_expr, rhs_expr]);
                 },
                 Operation::Ternary => 
                 {
@@ -319,8 +397,25 @@ impl<'s, 'p> Resolver<'s>
                     if true_expr.typ != false_expr.typ {return Err(ResError::TypeMismatch(args[2].span, false_expr.typ));}
 
                     typ = true_expr.typ;
-                    data = ResExprEnum::Op(*f, vec![cond_expr, true_expr, false_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![cond_expr, true_expr, false_expr]);
                 },
+                Operation::Func(id) =>
+                {
+                    let Some((param_typs, out_typ, res_idx)) = self.get_fn_idx(id) 
+                        else {return Err(ResError::IdentifierNotFound(expr.span, id))};
+                    if args.len() != param_typs.len() {return Err(ResError::ArgCountMismatch(expr.span))}
+
+                    let mut res_args = Vec::<ResExpr>::new();
+                    for (idx, arg) in args.iter().enumerate()
+                    {
+                        let res_arg = self.resolve_rvalue(arg)?;
+                        if res_arg.typ != param_typs[idx] {return Err(ResError::TypeMismatch(arg.span, res_arg.typ))}
+                        res_args.push(res_arg);
+                    }
+
+                    typ = *out_typ;
+                    data = ResExprEnum::Op(ResOp::Func(*res_idx), res_args);
+                }
             }
         }
 
@@ -333,17 +428,10 @@ impl<'s, 'p> Resolver<'s>
         let typ: VarType;
         match &expr.data
         {
-            ExprEnum::Identifier(x) =>
+            ExprEnum::Identifier(id) => match self.get_var_base_idx(id)
             {
-                for env in self.env_chain.iter().rev()
-                {
-                    if let Some((var_typ, idx)) = env.vars.get(x) 
-                    {
-                        return Ok(ResExpr {data: ResExprEnum::StackBinding(*idx), typ: *var_typ, cat: ValCat::Lvalue});
-                    }
-                }
-
-                return Err(ResError::IdentifierNotFound(expr.span, x));
+                Some((typ, off)) => return Ok(ResExpr {data: ResExprEnum::StackBinding(off), typ, cat: ValCat::Lvalue}),
+                None => return Err(ResError::IdentifierNotFound(expr.span, id))
             },
             ExprEnum::Op(f, args) => match f
             {
@@ -357,7 +445,7 @@ impl<'s, 'p> Resolver<'s>
                     if lhs_expr.typ != rhs_expr.typ {return Err(ResError::TypeMismatch(args[1].span, rhs_expr.typ));}
 
                     typ = lhs_expr.typ;
-                    data = ResExprEnum::Op(*f, vec![lhs_expr, rhs_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![lhs_expr, rhs_expr]);
                 },
                 Operation::Ternary => 
                 {
@@ -372,7 +460,7 @@ impl<'s, 'p> Resolver<'s>
                     if true_expr.typ != false_expr.typ {return Err(ResError::TypeMismatch(args[2].span, false_expr.typ));}
 
                     typ = true_expr.typ;
-                    data = ResExprEnum::Op(*f, vec![cond_expr, true_expr, false_expr]);
+                    data = ResExprEnum::Op(res_op(f), vec![cond_expr, true_expr, false_expr]);
                 },
                 _ => return Err(ResError::ExpectedLvalue(expr.span)),
             },
