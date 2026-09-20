@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::lexer::*;
 use crate::ast::*;
 use crate::resolver::*;
@@ -10,9 +12,10 @@ pub enum JumpOut
     Return(*mut [u8])
 }
 
-pub struct TreeWalker<'p>
+pub struct TreeWalker<'s, 'p>
 {
-    res_funcs: &'p Vec<ResBlock>,
+    res_funcs: &'p Vec<ResBlock<'s>>,
+    typ_sizes: &'p HashMap<VarType<'s>, usize>,
     stack: Vec<*mut [u8]>,
     frame_base: usize
 }
@@ -23,9 +26,9 @@ pub enum RuntimeError
     NoReturn
 }
 
-impl<'p> TreeWalker<'p>
+impl<'s, 'p> TreeWalker<'s, 'p>
 {
-    pub fn new(res_funcs: &'p Vec<ResBlock>) -> Self {Self {res_funcs, frame_base: 0, stack: Vec::new()}}
+    pub fn new(res_funcs: &'p Vec<ResBlock<'s>>, typ_sizes: &'p HashMap<VarType<'s>, usize>) -> Self {Self {res_funcs, frame_base: 0, typ_sizes, stack: Vec::new()}}
 
     pub fn execute(&mut self, block: &ResBlock) -> Result<(), RuntimeError>
     {
@@ -43,7 +46,12 @@ impl<'p> TreeWalker<'p>
         {
             match stmt
             {
-                ResStmt::Decl(expr) => {self.eval(expr)?;},
+                ResStmt::Decl(typ, init) => match init
+                {
+                    None => self.stack.push(Box::into_raw(vec![0; *self.typ_sizes.get(typ).unwrap()].into_boxed_slice())),
+                    Some(expr) => self.eval(expr)?
+                },
+                ResStmt::FnDecl(_) | ResStmt::StructDecl(_) => (),
                 ResStmt::Expr(expr) => 
                 {
                     self.eval(expr)?;
@@ -54,7 +62,6 @@ impl<'p> TreeWalker<'p>
                 ResStmt::Break => ret = JumpOut::Break,
                 ResStmt::Continue => ret = JumpOut::Continue,
                 ResStmt::Iter(cond, block) => ret = self.execute_while(cond, block)?,
-                ResStmt::FnDecl(_) => (),
                 ResStmt::Return(expr) =>
                 {
                     self.eval(expr)?;
@@ -439,6 +446,14 @@ impl<'p> TreeWalker<'p>
                         _ => return Err(RuntimeError::NoReturn)
                     }
                 },
+                ResOp::FieldAccess(off, size) =>
+                {
+                    self.eval(&args[0])?;
+                    let obj = self.stack.pop().unwrap();
+                    let ptr = Box::into_raw(vec![0; *size].into_boxed_slice());
+                    unsafe {std::ptr::copy_nonoverlapping((obj as *mut u8).add(*off), ptr as *mut u8, *size)}
+                    ptr
+                }
             }
         };
 

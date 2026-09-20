@@ -97,8 +97,10 @@ impl<'s> fmt::Display for Operation<'s>
             Operation::GreaterEq => ">=", Operation::LesserEq => "<=",
             Operation::And => "&&", Operation::Or => "||",
             Operation::Assign => "=", Operation::Ternary => "?:",
-            Operation::Func(iden) => str::from_utf8(iden).unwrap()
+            Operation::Func(iden) => str::from_utf8(iden).unwrap(),
+            Operation::FieldAccess(_) => "."
         };
+        if let Operation::FieldAccess(field) = self {write!(f, "{}", str::from_utf8(field).unwrap())?}
         write!(f, "{}", s)
     }
 }
@@ -117,13 +119,14 @@ impl fmt::Display for AtomType
     }
 }
 
-impl fmt::Display for VarType
+impl<'s> fmt::Display for VarType<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
             VarType::Atom(c) => write!(f, "{}", c),
+            VarType::Struct(id) => write!(f, "{}", str::from_utf8(id).unwrap()),
             VarType::Unit => write!(f, "[]"),
         }
     }
@@ -198,7 +201,15 @@ impl<'s> fmt::Display for StmtEnum<'s>
     {
         match self
         {
-            StmtEnum::Decl(typ, id, expr) => write!(f, "let {}: {} = {};", str::from_utf8(id).unwrap(), typ, expr.data),
+            StmtEnum::Decl(typ, id, init) => 
+            {
+                write!(f, "let {}: {}", str::from_utf8(id).unwrap(), typ)?;
+                match init
+                {
+                    None => write!(f, ";"),
+                    Some(expr) => write!(f, " = {};", expr.data)
+                }
+            },
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
             StmtEnum::Block(block) => write!(f, "{}", block),
             StmtEnum::Cond(if_else) => write!(f, "{}", if_else),
@@ -212,7 +223,7 @@ impl<'s> fmt::Display for StmtEnum<'s>
                 write!(f, "): {} {}", out_typ, block)
             },
             StmtEnum::Return(expr) => write!(f, "return {};", expr.data),
-            StmtEnum::Error => write!(f, "<Error>;")
+            StmtEnum::Error => write!(f, "<Error>;"),
         }
     }
 }
@@ -239,7 +250,8 @@ fn unres_op<'s>(op: &ResOp) -> Operation<'s>
         ResOp::Or => Operation::Or,
         ResOp::Assign => Operation::Assign,
         ResOp::Ternary => Operation::Ternary,
-        ResOp::Func(_) => unreachable!()
+        ResOp::Func(_) => unreachable!(),
+        ResOp::FieldAccess(_, _) => unreachable!(),
     }
 }
 
@@ -343,8 +355,8 @@ pub fn print_res_err(err: ResError, src: &[u8])
 {
     match err
     {
-        ResError::IdentifierNotFound(span, iden) => 
-            println!("Undeclared identifier '{}' at span {}:{}.", str::from_utf8(iden).unwrap(), span.start, span.end),
+        ResError::IdentifierNotFound(span) => 
+            println!("Undeclared identifier '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::ArgCountMismatch(span) => 
             println!("Invalid number of arguments for function/operator in expression '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::TypeMismatch(span, typ) => 

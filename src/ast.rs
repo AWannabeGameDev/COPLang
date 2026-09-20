@@ -2,7 +2,6 @@ use std::range::Range;
 
 use crate::lexer::*;
 
-// In the future add a variant for custom functions
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Operation<'s>
 {
@@ -13,7 +12,8 @@ pub enum Operation<'s>
     And, Or,
     Assign,
     Ternary,
-    Func(&'s [u8])
+    Func(&'s [u8]),
+    FieldAccess(&'s [u8])
 }
 
 #[derive(PartialEq, Debug)]
@@ -32,16 +32,17 @@ pub struct Expr<'s>
     pub data: ExprEnum<'s>
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AtomType
 {
     Int, Float, Bool
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum VarType
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+pub enum VarType<'s>
 {
     Atom(AtomType),
+    Struct(&'s [u8]),
     Unit
 }
 
@@ -67,8 +68,9 @@ pub enum ElseBlock<'s>
 #[derive(PartialEq, Debug)]
 pub enum StmtEnum<'s>
 {
-    Decl(VarType, &'s [u8], Expr<'s>),
-    FnDecl(&'s [u8], Vec<(&'s [u8], VarType)>, VarType, StmtBlock<'s>),
+    Decl(VarType<'s>, &'s [u8], Option<Expr<'s>>),
+    FnDecl(&'s [u8], Vec<(&'s [u8], VarType<'s>)>, VarType<'s>, StmtBlock<'s>),
+    StructDecl(&'s [u8], Vec<(&'s [u8], VarType<'s>)>),
     Expr(Expr<'s>),
     Block(StmtBlock<'s>),
     Cond(IfElseBlock<'s>),

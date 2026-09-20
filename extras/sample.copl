@@ -1,12 +1,16 @@
-fn ackermann(m: Int, n: Int) : Int {
-    if m == 0 {
-        return n + 1;
+fn gcd(a: Int, b: Int) : Int {
+    if b == 0 {
+        return a;
     }
-    if m > 0 && n == 0 {
-        return ackermann(m - 1, 1);
-    }
-    return ackermann(m - 1, ackermann(m, n - 1));
+    return gcd(b, a % b);
 }
 
-let result: Int = ackermann(4, 2);
-print result; // Should heavily churn the stack and eventually print 125
+fn execute_math() : [] {
+    let out: Int = gcd(1071, 462);
+    print out; // Should print 21
+    
+    // Satisfying the strict unit return requirement
+    return (); 
+}
+
+execute_math();

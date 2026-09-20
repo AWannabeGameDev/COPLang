@@ -117,7 +117,7 @@ fn main()
         for (idx, res_func) in resolver.res_funcs.iter().enumerate() {println!("$fenv[{}]\n{}\n", idx, res_func)}
         println!("--CODE--\n{}\n", res_block);
         println!("--OUTPUT--");
-        let mut walker = TreeWalker::new(&resolver.res_funcs);
+        let mut walker = TreeWalker::new(&resolver.res_funcs, &resolver.typ_sizes);
         match walker.execute(&res_block)
         {
             Ok(_) => (),
