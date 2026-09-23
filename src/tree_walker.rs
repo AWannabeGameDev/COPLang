@@ -448,10 +448,12 @@ impl<'s, 'p> TreeWalker<'s, 'p>
                 },
                 ResOp::FieldAccess(off, size) =>
                 {
+                    todo!();
                     self.eval(&args[0])?;
                     let obj = self.stack.pop().unwrap();
                     let ptr = Box::into_raw(vec![0; *size].into_boxed_slice());
                     unsafe {std::ptr::copy_nonoverlapping((obj as *mut u8).add(*off), ptr as *mut u8, *size)}
+                    if args[0].cat == ValCat::Rvalue {unsafe {drop(Box::from_raw(obj))}}
                     ptr
                 }
             }

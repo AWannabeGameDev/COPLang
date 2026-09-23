@@ -100,8 +100,9 @@ impl<'s> fmt::Display for Operation<'s>
             Operation::Func(iden) => str::from_utf8(iden).unwrap(),
             Operation::FieldAccess(_) => "."
         };
-        if let Operation::FieldAccess(field) = self {write!(f, "{}", str::from_utf8(field).unwrap())?}
-        write!(f, "{}", s)
+        write!(f, "{}", s)?;
+        if let Operation::FieldAccess(field) = self {write!(f, "{}", str::from_utf8(field).unwrap())}
+        else {Ok(())}
     }
 }
 
@@ -210,18 +211,24 @@ impl<'s> fmt::Display for StmtEnum<'s>
                     Some(expr) => write!(f, " = {};", expr.data)
                 }
             },
+            StmtEnum::FnDecl(id, params, out_typ, block) =>
+            {
+                write!(f, "{}(", str::from_utf8(id).unwrap())?;
+                for (param_id, param_typ) in params {write!(f, "{}: {}, ", str::from_utf8(param_id).unwrap(), param_typ)?}
+                write!(f, "): {} {}", out_typ, block)
+            },
+            StmtEnum::StructDecl(id, fields) =>
+            {
+                write!(f, "struct {} {{", str::from_utf8(id).unwrap())?;
+                for (field_id, field_typ) in fields {write!(f, "{}: {}, ", str::from_utf8(field_id).unwrap(), field_typ)?}
+                write!(f, "}}")
+            }
             StmtEnum::Expr(expr) => write!(f, "{};", expr.data),
             StmtEnum::Block(block) => write!(f, "{}", block),
             StmtEnum::Cond(if_else) => write!(f, "{}", if_else),
             StmtEnum::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             StmtEnum::Break => write!(f, "break;"),
             StmtEnum::Continue => write!(f, "continue;"),
-            StmtEnum::FnDecl(id, params, out_typ, block) =>
-            {
-                write!(f, "{}(", str::from_utf8(id).unwrap())?;
-                for param in params {write!(f, "{}: {}, ", str::from_utf8(param.0).unwrap(), param.1)?}
-                write!(f, "): {} {}", out_typ, block)
-            },
             StmtEnum::Return(expr) => write!(f, "return {};", expr.data),
             StmtEnum::Error => write!(f, "<Error>;"),
         }
@@ -255,7 +262,7 @@ fn unres_op<'s>(op: &ResOp) -> Operation<'s>
     }
 }
 
-impl<'s> fmt::Display for ResExprEnum
+impl<'s> fmt::Display for ResExprEnum<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -269,6 +276,7 @@ impl<'s> fmt::Display for ResExprEnum
                 match op
                 {
                     ResOp::Func(idx) => write!(f, "($fenv[{}]", idx),
+                    ResOp::FieldAccess(off, size) => write!(f, "(off[{}, {}]", off, size),
                     _ => write!(f, "({}", unres_op(op))
                 }?;
 
@@ -279,7 +287,7 @@ impl<'s> fmt::Display for ResExprEnum
     }
 }
 
-impl<'s> fmt::Display for ResBlock
+impl<'s> fmt::Display for ResBlock<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -299,7 +307,7 @@ impl<'s> fmt::Display for ResBlock
     }
 }
 
-impl<'s> fmt::Display for ResIfElse
+impl<'s> fmt::Display for ResIfElse<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -307,7 +315,7 @@ impl<'s> fmt::Display for ResIfElse
     }
 }
 
-impl<'s> fmt::Display for ResElse
+impl<'s> fmt::Display for ResElse<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -320,20 +328,28 @@ impl<'s> fmt::Display for ResElse
     }
 }
 
-impl<'s> fmt::Display for ResStmt
+impl<'s> fmt::Display for ResStmt<'s>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         match self
         {
-            ResStmt::Decl(expr) => write!(f, "decl {};", expr.data),
+            ResStmt::Decl(typ, init) => 
+            {
+                match init
+                {
+                    Some(expr) => write!(f, "decl {}: {};", expr.data, typ),
+                    None => write!(f, "decl: {};", typ)
+                }
+            },
+            ResStmt::FnDecl(idx) => write!(f, "fn decl $fenv[{}];", idx),
+            ResStmt::StructDecl(id) => write!(f, "struct decl {};", str::from_utf8(id).unwrap()),
             ResStmt::Expr(expr) => write!(f, "{};", expr.data),
             ResStmt::Block(res_block) => write!(f, "{}", res_block),
             ResStmt::Cond(if_else) => write!(f, "{}", if_else),
             ResStmt::Iter(cond, block) => write!(f, "while {} {}", cond.data, block),
             ResStmt::Break => write!(f, "break;"),
             ResStmt::Continue => write!(f, "continue;"),
-            ResStmt::FnDecl(idx) => write!(f, "fn decl $fenv[{}];", idx),
             ResStmt::Return(expr) => write!(f, "return {};", expr.data)
         }
     }
@@ -368,6 +384,14 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::OnlyInLoop(span) =>
             println!("Statement '{}' at span {}:{} can only be used in loops.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::OnlyInFunc(span) =>
-            println!("Statement '{}' at span {}:{} can only be used in functions.", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
+            println!("Statement '{}' at span {}:{} can only be used in functions.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::TypeNotFound(span, typ) =>
+            println!("Type '{}' undeclared, used in '{}' at span {}:{}.", typ, str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::NonStructFieldAccess(span) =>
+            println!("Field access on non-struct in '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::NoSuchField(span, struct_name) =>
+            println!("Non-existent field-access in '{}' on struct '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), str::from_utf8(struct_name).unwrap(), span.start, span.end),
+        ResError::DupField(span, field_id) =>
+            println!("Duplicate field '{}' in '{}' at span {}:{}.", str::from_utf8(field_id).unwrap(), str::from_utf8(&src[span]).unwrap(), span.start, span.end)
     }
 }

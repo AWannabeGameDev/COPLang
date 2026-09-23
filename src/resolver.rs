@@ -103,6 +103,7 @@ pub enum ResStmt<'s>
 pub enum ResError<'s>
 {
     IdentifierNotFound(Range<usize>),
+    TypeNotFound(Range<usize>, VarType<'s>),
     ArgCountMismatch(Range<usize>),
     TypeMismatch(Range<usize>, VarType<'s>),
     ExpectedLvalue(Range<usize>),
@@ -110,14 +111,15 @@ pub enum ResError<'s>
     OnlyInLoop(Range<usize>),
     OnlyInFunc(Range<usize>),
     NonStructFieldAccess(Range<usize>),
-    NoSuchField(Range<usize>, &'s [u8])
+    NoSuchField(Range<usize>, &'s [u8]),
+    DupField(Range<usize>, &'s [u8])
 }
 
 struct Environment<'s>
 {
     vars: HashMap<&'s [u8], (VarType<'s>, usize)>,
     funcs: HashMap<&'s [u8], (Vec<VarType<'s>>, VarType<'s>, usize)>,
-    structs: HashMap<&'s [u8], HashMap<&'s [u8], (VarType<'s>, (usize, usize))>>,
+    structs: HashMap<&'s [u8], HashMap<&'s [u8], (VarType<'s>, usize, usize)>>,
     base: usize,
     next_var_idx: usize
 }
@@ -162,7 +164,7 @@ impl<'s, 'p> Resolver<'s>
         None
     }
 
-    fn get_fields(&self, struct_name: &[u8]) -> Option<&HashMap<&'s [u8], (VarType<'s>, (usize, usize))>>
+    fn get_fields(&self, struct_name: &[u8]) -> Option<&HashMap<&'s [u8], (VarType<'s>, usize, usize)>>
     {
         for env in self.env_chain.iter().rev()
         {
@@ -172,7 +174,7 @@ impl<'s, 'p> Resolver<'s>
         None
     }
 
-    pub fn resolve(&mut self, block: &StmtBlock<'s>) -> ResBlock
+    pub fn resolve(&mut self, block: &StmtBlock<'s>) -> ResBlock<'s>
     {
         self.resolve_block(block, HashMap::new())
     }
@@ -225,6 +227,8 @@ impl<'s, 'p> Resolver<'s>
         {
             StmtEnum::Decl(typ, iden, init) => 
             {
+                if self.typ_sizes.get(typ).is_none() {return Err(ResError::TypeNotFound(stmt.span, *typ))}
+
                 let res_expr = match init
                 {
                     None => None,
@@ -308,7 +312,21 @@ impl<'s, 'p> Resolver<'s>
             },
             StmtEnum::StructDecl(id, fields) =>
             {
-                todo!()
+                if self.get_fields(id).is_some() {return Err(ResError::Redecl(stmt.span))}
+
+                let mut res_fields = HashMap::<&'s [u8], (VarType<'s>, usize, usize)>::new();
+                let mut off = 0;
+                for (field_id, field_typ) in fields
+                {
+                    let Some(field_size) = self.typ_sizes.get(field_typ) else {return Err(ResError::TypeNotFound(stmt.span, *field_typ))};
+                    if let Some(_) = res_fields.insert(field_id, (*field_typ, off, *field_size))
+                        {return Err(ResError::DupField(stmt.span, field_id))}
+                    off += field_size;
+                }
+
+                self.env_chain.last_mut().unwrap().structs.insert(id, res_fields);
+                self.typ_sizes.insert(VarType::Struct(id), off);
+                Ok(ResStmt::StructDecl(id))
             },
             StmtEnum::Error => unreachable!()
         }
@@ -478,7 +496,7 @@ impl<'s, 'p> Resolver<'s>
 
                     let VarType::Struct(struct_name) = res_expr.typ 
                         else {return Err(ResError::NonStructFieldAccess(expr.span))};
-                    let Some((field_typ, (off, size))) = self.get_fields(struct_name).unwrap().get(field)
+                    let Some((field_typ, off, size)) = self.get_fields(struct_name).unwrap().get(field)
                         else {return Err(ResError::NoSuchField(expr.span, struct_name))};
 
                     typ = *field_typ;
@@ -537,7 +555,7 @@ impl<'s, 'p> Resolver<'s>
 
                     let VarType::Struct(struct_name) = res_expr.typ 
                         else {return Err(ResError::NonStructFieldAccess(expr.span))};
-                    let Some((field_typ, (off, size))) = self.get_fields(struct_name).unwrap().get(field)
+                    let Some((field_typ, off, size)) = self.get_fields(struct_name).unwrap().get(field)
                         else {return Err(ResError::NoSuchField(expr.span, struct_name))};
 
                     typ = *field_typ;

@@ -88,8 +88,9 @@ ELSE: ElseBlock<'s> =
 
 STMT: Stmt<'s> =
 {
-    <start:@L> "let" <id:"iden"> ":" <typ:TYPE> "=" <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, expr)},
+    <start:@L> "let" <id:"iden"> ":" <typ:TYPE> <init:("=" <ASSN>)?> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, init)},
     <start:@L> "fn" <id:"iden"> "(" <typs:COMMALIST<(<"iden"> ":" <TYPE>)>> ")" ":" <out:TYPE> <end:@R> "{" <block:BLOCK> "}" => Stmt {span: Range {start, end}, data: StmtEnum::FnDecl(id, typs, out, block)},
+    <start:@L> "struct" <id:"iden"> "{" <fields:COMMALIST<(<"iden"> ":" <TYPE>)>> "}" <end:@R> => Stmt {span: Range {start, end}, data:StmtEnum::StructDecl(id, fields)},
     <start:@L> <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Expr(expr)},
     <start:@L> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Block(block)},
     <start:@L> <ifelse:IFELSE> <end:@R> => Stmt {span: Range{start, end}, data: StmtEnum::Cond(ifelse)},
@@ -114,9 +115,10 @@ COMMALIST<T>: Vec<T> =
     }
 }
 
-TYPE: VarType =
+TYPE: VarType<'s> =
 {
     <c:ATOM> => VarType::Atom(c),
+    <id:"iden"> => VarType::Struct(id),
     "[" "]" => VarType::Unit
 }
 
@@ -182,6 +184,7 @@ UN: Expr<'s> =
     <start:@L> "!" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Not, vec![e])},
     <start:@L> "-" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Negate, vec![e])},
     <start:@L> "print" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Print, vec![e])},
+    <start:@L> <expr:GRP> "." <field:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::FieldAccess(field), vec![expr])},
     <e:GRP> => e
 }
 

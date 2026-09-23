@@ -1,16 +1,13 @@
-fn gcd(a: Int, b: Int) : Int {
-    if b == 0 {
-        return a;
-    }
-    return gcd(b, a % b);
+struct Vec2 {x: Int, y: Int}
+
+fn print_vec2(v: Vec2): []
+{
+    print v.x;
+    print v.y;
+    return ();
 }
 
-fn execute_math() : [] {
-    let out: Int = gcd(1071, 462);
-    print out; // Should print 21
-    
-    // Satisfying the strict unit return requirement
-    return (); 
-}
-
-execute_math();
+let dir: Vec2;
+dir.x = 1;
+dir.y = 2;
+print_vec2(dir);

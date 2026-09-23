@@ -98,11 +98,11 @@ fn main()
                 ParseError::User {..} => unreachable!(),
             }
         }
+
+        process::exit(1);
     }
-    else
-    {
-        println!("Successfully parsed:\n{block}\n")
-    }
+
+    println!("Successfully parsed:\n{block}\n");
 
     let mut resolver = Resolver::new();
     let res_block = resolver.resolve(&block);
@@ -110,18 +110,17 @@ fn main()
     if resolver.errors.len() > 0
     {
         for err in resolver.errors {print!("Resolution error: "); print_res_err(err, src.as_bytes());}
+        process::exit(1);
     }
-    else
+    
+    println!("Successfully resolved.\n\n--FUNCTION DECLARATIONS--");
+    for (idx, res_func) in resolver.res_funcs.iter().enumerate() {println!("$fenv[{}]\n{}\n", idx, res_func)}
+    println!("--CODE--\n{}\n", res_block);
+    println!("--OUTPUT--");
+    let mut walker = TreeWalker::new(&resolver.res_funcs, &resolver.typ_sizes);
+    match walker.execute(&res_block)
     {
-        println!("Successfully resolved.\n\n--FUNCTION DECLARATIONS--");
-        for (idx, res_func) in resolver.res_funcs.iter().enumerate() {println!("$fenv[{}]\n{}\n", idx, res_func)}
-        println!("--CODE--\n{}\n", res_block);
-        println!("--OUTPUT--");
-        let mut walker = TreeWalker::new(&resolver.res_funcs, &resolver.typ_sizes);
-        match walker.execute(&res_block)
-        {
-            Ok(_) => (),
-            Err(err) => println!("Runtime error: {err}")
-        }
+        Ok(_) => (),
+        Err(err) => println!("Runtime error: {err}")
     }
 }
