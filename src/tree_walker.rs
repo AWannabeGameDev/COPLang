@@ -458,7 +458,7 @@ impl<'s, 'p> TreeWalker<'s, 'p>
                         {
                             let ptr = Box::into_raw(vec![0; *size].into_boxed_slice());
                             unsafe {ptr::copy_nonoverlapping((obj as *mut u8).add(*off), ptr as *mut u8, *size)}
-                            if args[0].cat == ValCat::Rvalue {unsafe {drop(Box::from_raw(obj))}}
+                            unsafe {drop(Box::from_raw(obj))}
                             ptr
                         },
                         ValCat::Lvalue =>

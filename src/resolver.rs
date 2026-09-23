@@ -260,12 +260,15 @@ impl<'s, 'p> Resolver<'s>
                     Some(_) => Err(ResError::Redecl(stmt.span)),
                     None =>
                     {
+                        if self.typ_sizes.get(out_typ).is_none() {return Err(ResError::TypeNotFound(stmt.span, *out_typ))}
+
                         let mut vars = HashMap::<&'s [u8], (VarType, usize)>::new();
                         let mut param_typs = Vec::<VarType>::new();
-                        for (idx, param) in params.iter().enumerate()
+                        for (idx, (param_id, param_typ)) in params.iter().enumerate()
                         {
-                            vars.insert(param.0, (param.1, env.next_var_idx + idx));
-                            param_typs.push(param.1);
+                            if self.typ_sizes.get(param_typ).is_none() {return Err(ResError::TypeNotFound(stmt.span, *param_typ))}
+                            vars.insert(param_id, (*param_typ, env.next_var_idx + idx));
+                            param_typs.push(*param_typ);
                         }
 
                         env.funcs.insert(id, (param_typs, *out_typ, self.res_funcs.len()));
@@ -283,6 +286,24 @@ impl<'s, 'p> Resolver<'s>
                         Ok(ResStmt::FnDecl(self.res_funcs.len() - 1))
                     }
                 }
+            },
+            StmtEnum::StructDecl(id, fields) =>
+            {
+                if self.get_fields(id).is_some() {return Err(ResError::Redecl(stmt.span))}
+
+                let mut res_fields = HashMap::<&'s [u8], (VarType<'s>, usize, usize)>::new();
+                let mut off = 0;
+                for (field_id, field_typ) in fields
+                {
+                    let Some(field_size) = self.typ_sizes.get(field_typ) else {return Err(ResError::TypeNotFound(stmt.span, *field_typ))};
+                    if let Some(_) = res_fields.insert(field_id, (*field_typ, off, *field_size))
+                        {return Err(ResError::DupField(stmt.span, field_id))}
+                    off += field_size;
+                }
+
+                self.env_chain.last_mut().unwrap().structs.insert(id, res_fields);
+                self.typ_sizes.insert(VarType::Struct(id), off);
+                Ok(ResStmt::StructDecl(id))
             },
             StmtEnum::Expr(expr) => Ok(ResStmt::Expr(self.resolve_rvalue(&expr)?)),
             StmtEnum::Block(block) => Ok(ResStmt::Block(self.resolve_block(block, HashMap::new()))),
@@ -309,24 +330,6 @@ impl<'s, 'p> Resolver<'s>
                     if res_expr.typ != self.return_type {Err(ResError::TypeMismatch(expr.span, res_expr.typ))}
                     else {Ok(ResStmt::Return(res_expr))}
                 }
-            },
-            StmtEnum::StructDecl(id, fields) =>
-            {
-                if self.get_fields(id).is_some() {return Err(ResError::Redecl(stmt.span))}
-
-                let mut res_fields = HashMap::<&'s [u8], (VarType<'s>, usize, usize)>::new();
-                let mut off = 0;
-                for (field_id, field_typ) in fields
-                {
-                    let Some(field_size) = self.typ_sizes.get(field_typ) else {return Err(ResError::TypeNotFound(stmt.span, *field_typ))};
-                    if let Some(_) = res_fields.insert(field_id, (*field_typ, off, *field_size))
-                        {return Err(ResError::DupField(stmt.span, field_id))}
-                    off += field_size;
-                }
-
-                self.env_chain.last_mut().unwrap().structs.insert(id, res_fields);
-                self.typ_sizes.insert(VarType::Struct(id), off);
-                Ok(ResStmt::StructDecl(id))
             },
             StmtEnum::Error => unreachable!()
         }
