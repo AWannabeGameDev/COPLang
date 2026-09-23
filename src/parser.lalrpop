@@ -184,13 +184,18 @@ UN: Expr<'s> =
     <start:@L> "!" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Not, vec![e])},
     <start:@L> "-" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Negate, vec![e])},
     <start:@L> "print" <e:UN> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Print, vec![e])},
-    <start:@L> <expr:GRP> "." <field:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::FieldAccess(field), vec![expr])},
-    <e:GRP> => e
+    <field:FIELD> => field
+}
+
+FIELD: Expr<'s> =
+{
+    <start:@L> <field:FIELD> "." <id:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::FieldAccess(id), vec![field])},
+    <expr:GRP> => expr
 }
 
 GRP: Expr<'s> =
 {
-    <start:@L> "(" <e:ASSN?> ")" <end:@R> => match e {Some(e) => e, None => Expr {span: Range {start, end}, data: ExprEnum::Unit}},
+    "(" <start:@L> <e:ASSN?> <end:@R> ")" => match e {Some(e) => e, None => Expr {span: Range {start, end}, data: ExprEnum::Unit}},
     <start:@L> <id:"iden"> "(" <args:COMMALIST<ASSN>> ")" <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::Func(id), args)},
     <e:ENTLIT> => e,
     <start:@L> <e:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Identifier(e)}

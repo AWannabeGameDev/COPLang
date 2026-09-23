@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ptr;
 
 use crate::lexer::*;
 use crate::ast::*;
@@ -410,7 +411,7 @@ impl<'s, 'p> TreeWalker<'s, 'p>
                     let rhs = self.stack.pop().unwrap();
                     let lhs = self.stack.pop().unwrap();
 
-                    unsafe {std::ptr::copy_nonoverlapping((*rhs).as_ptr(), (*lhs).as_mut_ptr(), (&*rhs).len());}
+                    unsafe {ptr::copy_nonoverlapping((*rhs).as_ptr(), (*lhs).as_mut_ptr(), (&*rhs).len());}
                     match expr.cat
                     {
                         ValCat::Lvalue => {unsafe {drop(Box::from_raw(rhs));} lhs},
@@ -448,13 +449,23 @@ impl<'s, 'p> TreeWalker<'s, 'p>
                 },
                 ResOp::FieldAccess(off, size) =>
                 {
-                    todo!();
                     self.eval(&args[0])?;
                     let obj = self.stack.pop().unwrap();
-                    let ptr = Box::into_raw(vec![0; *size].into_boxed_slice());
-                    unsafe {std::ptr::copy_nonoverlapping((obj as *mut u8).add(*off), ptr as *mut u8, *size)}
-                    if args[0].cat == ValCat::Rvalue {unsafe {drop(Box::from_raw(obj))}}
-                    ptr
+
+                    match expr.cat
+                    {
+                        ValCat::Rvalue =>
+                        {
+                            let ptr = Box::into_raw(vec![0; *size].into_boxed_slice());
+                            unsafe {ptr::copy_nonoverlapping((obj as *mut u8).add(*off), ptr as *mut u8, *size)}
+                            if args[0].cat == ValCat::Rvalue {unsafe {drop(Box::from_raw(obj))}}
+                            ptr
+                        },
+                        ValCat::Lvalue =>
+                        {
+                            unsafe {ptr::slice_from_raw_parts_mut((obj as *mut u8).add(*off), *size)}
+                        }
+                    }
                 }
             }
         };

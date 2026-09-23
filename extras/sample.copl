@@ -1,13 +1,96 @@
-struct Vec2 {x: Int, y: Int}
+struct Node {
+    value: Int,
+    next: Node
+}
 
-fn print_vec2(v: Vec2): []
-{
-    print v.x;
-    print v.y;
+struct Point {
+    x: Int,
+    y: Int
+}
+
+struct Vec2 {
+    x: Int,
+    y: Int
+}
+
+struct Pair {
+    a: Int,
+    b: Int
+}
+
+struct Foo {
+    bar: Int
+}
+
+struct TypeA {
+    x: Int
+}
+
+struct TypeB {
+    y: Int
+}
+
+fn make_point() : Point {
+    let p: Point;
+    p.x = 1;
+    p.y = 2;
+    return p;
+}
+
+// 1. Recursive Layout Paradox (Infinite Size Struct)
+fn test_infinite_size() : [] {
+    let n: Node;
     return ();
 }
 
-let dir: Vec2;
-dir.x = 1;
-dir.y = 2;
-print_vec2(dir);
+// 2. Mutating an Rvalue Temporary
+fn test_rvalue_mutation() : [] {
+    make_point().x = 10;
+    return ();
+}
+
+// 3. Type Mismatch on Multi-Word Struct Assignment
+fn test_type_mismatch() : [] {
+    let v: Vec2;
+    let p: Pair;
+    p = v; 
+    return ();
+}
+
+// 4. Non-Existent Field Access
+fn test_invalid_field() : [] {
+    let f: Foo;
+    f.bar = 5;
+    print f.baz;
+    return ();
+}
+
+// 5. Incompatible Ternary Arm Struct Types
+fn test_ternary_struct_mismatch(cond: Bool) : [] {
+    let a_inst: TypeA;
+    let b_inst: TypeB;
+    let val: Int = (cond ? a_inst : b_inst).x;
+    return ();
+}
+
+// 6. Primitive Dot-Operator Access
+fn test_primitive_field() : [] {
+    let x: Int = 42;
+    print x.val;
+    return ();
+}
+
+fn main() : [] {
+    // Uncomment one at a time to test each semantic error:
+
+    test_infinite_size();
+    test_rvalue_mutation();
+    test_type_mismatch();
+    test_invalid_field();
+    test_ternary_struct_mismatch(true);
+    test_primitive_field();
+
+    return ();
+}
+
+main();
