@@ -13,7 +13,8 @@ pub enum Operation<'s>
     Assign,
     Ternary,
     Func(&'s [u8]),
-    FieldAccess(&'s [u8])
+    FieldAccess(&'s [u8]),
+    ArrayAccess
 }
 
 #[derive(PartialEq, Debug)]
@@ -38,11 +39,12 @@ pub enum AtomType
     Int, Float, Bool
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum VarType<'s>
 {
     Atom(AtomType),
     Struct(&'s [u8]),
+    Array(Box<VarType<'s>>, usize),
     Unit
 }
 
@@ -70,7 +72,7 @@ pub enum StmtEnum<'s>
 {
     Decl(VarType<'s>, &'s [u8], Option<Expr<'s>>),
     FnDecl(&'s [u8], Vec<(&'s [u8], VarType<'s>)>, VarType<'s>, StmtBlock<'s>),
-    StructDecl(&'s [u8], Vec<(&'s [u8], VarType<'s>)>),
+    StructDecl(VarType<'s>, Vec<(&'s [u8], VarType<'s>)>),
     Expr(Expr<'s>),
     Block(StmtBlock<'s>),
     Cond(IfElseBlock<'s>),

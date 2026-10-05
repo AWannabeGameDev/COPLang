@@ -90,7 +90,7 @@ STMT: Stmt<'s> =
 {
     <start:@L> "let" <id:"iden"> ":" <typ:TYPE> <init:("=" <ASSN>)?> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Decl(typ, id, init)},
     <start:@L> "fn" <id:"iden"> "(" <typs:COMMALIST<(<"iden"> ":" <TYPE>)>> ")" ":" <out:TYPE> <end:@R> "{" <block:BLOCK> "}" => Stmt {span: Range {start, end}, data: StmtEnum::FnDecl(id, typs, out, block)},
-    <start:@L> "struct" <id:"iden"> "{" <fields:COMMALIST<(<"iden"> ":" <TYPE>)>> "}" <end:@R> => Stmt {span: Range {start, end}, data:StmtEnum::StructDecl(id, fields)},
+    <start:@L> "struct" <id:"iden"> "{" <fields:COMMALIST<(<"iden"> ":" <TYPE>)>> "}" <end:@R> => Stmt {span: Range {start, end}, data:StmtEnum::StructDecl(VarType::Struct(id), fields)},
     <start:@L> <expr:ASSN> ";" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Expr(expr)},
     <start:@L> "{" <block:BLOCK> "}" <end:@R> => Stmt {span: Range {start, end}, data: StmtEnum::Block(block)},
     <start:@L> <ifelse:IFELSE> <end:@R> => Stmt {span: Range{start, end}, data: StmtEnum::Cond(ifelse)},
@@ -119,6 +119,11 @@ TYPE: VarType<'s> =
 {
     <c:ATOM> => VarType::Atom(c),
     <id:"iden"> => VarType::Struct(id),
+    "[" <elem_typ:TYPE> ";" <lit:ENTLIT> "]" =>? match lit.data
+    {
+        ExprEnum::Literal(Literal::Int(count)) => Ok(VarType::Array(Box::new(elem_typ), count as usize)),
+        _ => Err(ParseError::User {error: ()})
+    },
     "[" "]" => VarType::Unit
 }
 
@@ -190,6 +195,7 @@ UN: Expr<'s> =
 FIELD: Expr<'s> =
 {
     <start:@L> <field:FIELD> "." <id:"iden"> <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::FieldAccess(id), vec![field])},
+    <start:@L> <arr:FIELD> "[" <expr:ASSN> "]" <end:@R> => Expr {span: Range {start, end}, data: ExprEnum::Op(Operation::ArrayAccess, vec![arr, expr])},
     <expr:GRP> => expr
 }
 

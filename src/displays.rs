@@ -98,7 +98,8 @@ impl<'s> fmt::Display for Operation<'s>
             Operation::And => "&&", Operation::Or => "||",
             Operation::Assign => "=", Operation::Ternary => "?:",
             Operation::Func(iden) => str::from_utf8(iden).unwrap(),
-            Operation::FieldAccess(_) => "."
+            Operation::FieldAccess(_) => ".",
+            Operation::ArrayAccess => "[]"
         };
         write!(f, "{}", s)?;
         if let Operation::FieldAccess(field) = self {write!(f, "{}", str::from_utf8(field).unwrap())}
@@ -128,6 +129,7 @@ impl<'s> fmt::Display for VarType<'s>
         {
             VarType::Atom(c) => write!(f, "{}", c),
             VarType::Struct(id) => write!(f, "{}", str::from_utf8(id).unwrap()),
+            VarType::Array(box_elem_typ, count) => write!(f, "[{}; {}]", *box_elem_typ, count),
             VarType::Unit => write!(f, "[]"),
         }
     }
@@ -217,9 +219,9 @@ impl<'s> fmt::Display for StmtEnum<'s>
                 for (param_id, param_typ) in params {write!(f, "{}: {}, ", str::from_utf8(param_id).unwrap(), param_typ)?}
                 write!(f, "): {} {}", out_typ, block)
             },
-            StmtEnum::StructDecl(id, fields) =>
+            StmtEnum::StructDecl(typ, fields) =>
             {
-                write!(f, "struct {} {{", str::from_utf8(id).unwrap())?;
+                write!(f, "struct {} {{", typ)?;
                 for (field_id, field_typ) in fields {write!(f, "{}: {}, ", str::from_utf8(field_id).unwrap(), field_typ)?}
                 write!(f, "}}")
             }
@@ -257,12 +259,12 @@ fn unres_op<'s>(op: &ResOp) -> Operation<'s>
         ResOp::Or => Operation::Or,
         ResOp::Assign => Operation::Assign,
         ResOp::Ternary => Operation::Ternary,
-        ResOp::Func(_) => unreachable!(),
-        ResOp::FieldAccess(_, _) => unreachable!(),
+        ResOp::ArrayAccess => Operation::ArrayAccess,
+        ResOp::Func(_) | ResOp::FieldAccess(..) => unreachable!(),
     }
 }
 
-impl<'s> fmt::Display for ResExprEnum<'s>
+impl<'s, 'a> fmt::Display for ResExprEnum<'s, 'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -287,7 +289,7 @@ impl<'s> fmt::Display for ResExprEnum<'s>
     }
 }
 
-impl<'s> fmt::Display for ResBlock<'s>
+impl<'s, 'a> fmt::Display for ResBlock<'s, 'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -307,7 +309,7 @@ impl<'s> fmt::Display for ResBlock<'s>
     }
 }
 
-impl<'s> fmt::Display for ResIfElse<'s>
+impl<'s, 'a> fmt::Display for ResIfElse<'s, 'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -315,7 +317,7 @@ impl<'s> fmt::Display for ResIfElse<'s>
     }
 }
 
-impl<'s> fmt::Display for ResElse<'s>
+impl<'s, 'a> fmt::Display for ResElse<'s, 'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -328,7 +330,7 @@ impl<'s> fmt::Display for ResElse<'s>
     }
 }
 
-impl<'s> fmt::Display for ResStmt<'s>
+impl<'s, 'a> fmt::Display for ResStmt<'s, 'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
@@ -392,6 +394,8 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::NoSuchField(span, struct_name) =>
             println!("Non-existent field-access in '{}' on struct '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), str::from_utf8(struct_name).unwrap(), span.start, span.end),
         ResError::DupField(span, field_id) =>
-            println!("Duplicate field '{}' in '{}' at span {}:{}.", str::from_utf8(field_id).unwrap(), str::from_utf8(&src[span]).unwrap(), span.start, span.end)
+            println!("Duplicate field '{}' in '{}' at span {}:{}.", str::from_utf8(field_id).unwrap(), str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::NonArrayIndexAccess(span) => 
+            println!("Index access on non-array in '{}' at span {}:{}", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
     }
 }

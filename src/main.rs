@@ -79,17 +79,13 @@ fn main()
             match err
             {
                 ParseError::InvalidToken {location} => println!("Invalid token at byte {location}."),
-                ParseError::UnrecognizedEof {expected, ..} => 
+                ParseError::UnrecognizedEof {..} => 
                 {
-                    print!("Expected ");
-                    for exp in expected {print!("{exp}, ")}
-                    println!("found EOF.");
+                    println!("Unexpected EOF.");
                 },
-                ParseError::UnrecognizedToken {token: (l, tok, r), expected} =>
+                ParseError::UnrecognizedToken {token: (l, tok, r), ..} =>
                 {
-                    print!("Expected ");
-                    for exp in expected {print!("{exp}, ")}
-                    println!("found '{tok}' at span {l}:{r}.");
+                    println!("Unexpected token '{tok}' at span {l}:{r}.");
                 },
                 ParseError::ExtraToken {token: (l, tok, r)} =>
                 {

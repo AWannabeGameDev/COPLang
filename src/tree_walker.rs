@@ -1,3 +1,5 @@
+// Lifetime 'r is for a resolved AST
+
 use std::collections::HashMap;
 use std::ptr;
 
@@ -13,10 +15,10 @@ pub enum JumpOut
     Return(*mut [u8])
 }
 
-pub struct TreeWalker<'s, 'p>
+pub struct TreeWalker<'s, 'a, 'r>
 {
-    res_funcs: &'p Vec<ResBlock<'s>>,
-    typ_sizes: &'p HashMap<VarType<'s>, usize>,
+    res_funcs: &'r Vec<ResBlock<'s, 'a>>,
+    typ_sizes: &'r HashMap<&'a VarType<'s>, usize>,
     stack: Vec<*mut [u8]>,
     frame_base: usize
 }
@@ -27,9 +29,9 @@ pub enum RuntimeError
     NoReturn
 }
 
-impl<'s, 'p> TreeWalker<'s, 'p>
+impl<'s, 'a, 'r> TreeWalker<'s, 'a, 'r>
 {
-    pub fn new(res_funcs: &'p Vec<ResBlock<'s>>, typ_sizes: &'p HashMap<VarType<'s>, usize>) -> Self {Self {res_funcs, frame_base: 0, typ_sizes, stack: Vec::new()}}
+    pub fn new(res_funcs: &'r Vec<ResBlock<'s, 'a>>, typ_sizes: &'r HashMap<&'a VarType<'s>, usize>) -> Self {Self {res_funcs, frame_base: 0, typ_sizes, stack: Vec::new()}}
 
     pub fn execute(&mut self, block: &ResBlock) -> Result<(), RuntimeError>
     {
@@ -49,7 +51,7 @@ impl<'s, 'p> TreeWalker<'s, 'p>
             {
                 ResStmt::Decl(typ, init) => match init
                 {
-                    None => self.stack.push(Box::into_raw(vec![0; *self.typ_sizes.get(typ).unwrap()].into_boxed_slice())),
+                    None => self.stack.push(Box::into_raw(vec![0; Resolver::get_type_size(typ, self.typ_sizes).unwrap()].into_boxed_slice())),
                     Some(expr) => self.eval(expr)?
                 },
                 ResStmt::FnDecl(_) | ResStmt::StructDecl(_) => (),
@@ -464,6 +466,30 @@ impl<'s, 'p> TreeWalker<'s, 'p>
                         ValCat::Lvalue =>
                         {
                             unsafe {ptr::slice_from_raw_parts_mut((obj as *mut u8).add(*off), *size)}
+                        }
+                    }
+                },
+                ResOp::ArrayAccess =>
+                {
+                    self.eval(&args[0])?;
+                    let arr = self.stack.pop().unwrap();
+                    self.eval(&args[1])?;
+                    let idx = self.stack.pop().unwrap();
+
+                    let elem_size = Resolver::get_type_size(expr.typ, self.typ_sizes).unwrap();
+
+                    match expr.cat
+                    {
+                        ValCat::Rvalue =>
+                        {
+                            let ptr = Box::into_raw(vec![0; elem_size].into_boxed_slice());
+                            unsafe {ptr::copy_nonoverlapping((arr as *mut u8).add(*(idx as *mut usize) * elem_size), ptr as *mut u8, elem_size)}
+                            unsafe {drop(Box::from_raw(arr))}
+                            ptr
+                        },
+                        ValCat::Lvalue =>
+                        {
+                            unsafe {ptr::slice_from_raw_parts_mut((arr as *mut u8).add(*(idx as *mut usize) * elem_size), elem_size)}
                         }
                     }
                 }

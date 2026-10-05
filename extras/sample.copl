@@ -1,96 +1,43 @@
-struct Node {
-    value: Int,
-    next: Node
+fn sort(arr: [Int; 10]): [Int; 10]
+{
+    let sorted: Int = 1;
+
+    while sorted < 10
+    {
+        let idx: Int = sorted;
+
+        while idx > 0
+        {
+            if arr[idx - 1] <= arr[idx] {break;}
+            let tmp: Int = arr[idx];
+            arr[idx] = arr[idx - 1];
+            arr[idx - 1] = tmp;
+            idx = idx - 1;
+        }
+
+        sorted = sorted + 1;
+    }
+
+    return arr;
 }
 
-struct Point {
-    x: Int,
-    y: Int
-}
-
-struct Vec2 {
-    x: Int,
-    y: Int
-}
-
-struct Pair {
-    a: Int,
-    b: Int
-}
-
-struct Foo {
-    bar: Int
-}
-
-struct TypeA {
-    x: Int
-}
-
-struct TypeB {
-    y: Int
-}
-
-fn make_point() : Point {
-    let p: Point;
-    p.x = 1;
-    p.y = 2;
-    return p;
-}
-
-// 1. Recursive Layout Paradox (Infinite Size Struct)
-fn test_infinite_size() : [] {
-    let n: Node;
+fn print_array(arr: [Int; 10]): []
+{
+    let idx: Int = 0;
+    while idx < 10 {print arr[idx]; idx = idx + 1;}
+    print 10000000;
     return ();
 }
 
-// 2. Mutating an Rvalue Temporary
-fn test_rvalue_mutation() : [] {
-    make_point().x = 10;
-    return ();
+let arr: [Int; 10.5];
+let idx: Int = 0;
+while idx < 10
+{
+    if idx % 2 == 0 {arr[idx] = 10 - idx;}
+    else {arr[idx] = idx;}
+    idx = idx + 1;
 }
 
-// 3. Type Mismatch on Multi-Word Struct Assignment
-fn test_type_mismatch() : [] {
-    let v: Vec2;
-    let p: Pair;
-    p = v; 
-    return ();
-}
-
-// 4. Non-Existent Field Access
-fn test_invalid_field() : [] {
-    let f: Foo;
-    f.bar = 5;
-    print f.baz;
-    return ();
-}
-
-// 5. Incompatible Ternary Arm Struct Types
-fn test_ternary_struct_mismatch(cond: Bool) : [] {
-    let a_inst: TypeA;
-    let b_inst: TypeB;
-    let val: Int = (cond ? a_inst : b_inst).x;
-    return ();
-}
-
-// 6. Primitive Dot-Operator Access
-fn test_primitive_field() : [] {
-    let x: Int = 42;
-    print x.val;
-    return ();
-}
-
-fn main() : [] {
-    // Uncomment one at a time to test each semantic error:
-
-    test_infinite_size();
-    test_rvalue_mutation();
-    test_type_mismatch();
-    test_invalid_field();
-    test_ternary_struct_mismatch(true);
-    test_primitive_field();
-
-    return ();
-}
-
-main();
+print_array(arr);
+arr = sort(arr);
+print_array(arr);
