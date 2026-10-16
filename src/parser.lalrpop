@@ -119,11 +119,11 @@ TYPE: VarType<'s> =
 {
     <c:ATOM> => VarType::Atom(c),
     <id:"iden"> => VarType::Struct(id),
-    "[" <elem_typ:TYPE> ";" <lit:ENTLIT> "]" =>? match lit.data
+    "[" <elem_typ:TYPE> ";" <lit:ENTLIT> "]" => VarType::Array(Box::new(elem_typ), match lit.data
     {
-        ExprEnum::Literal(Literal::Int(count)) => Ok(VarType::Array(Box::new(elem_typ), count as usize)),
-        _ => Err(ParseError::User {error: ()})
-    },
+        ExprEnum::Literal(Literal::Int(count)) => count as isize,
+        _ => -1
+    }),
     "[" "]" => VarType::Unit
 }
 

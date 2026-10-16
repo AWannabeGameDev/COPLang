@@ -396,6 +396,8 @@ pub fn print_res_err(err: ResError, src: &[u8])
         ResError::DupField(span, field_id) =>
             println!("Duplicate field '{}' in '{}' at span {}:{}.", str::from_utf8(field_id).unwrap(), str::from_utf8(&src[span]).unwrap(), span.start, span.end),
         ResError::NonArrayIndexAccess(span) => 
-            println!("Index access on non-array in '{}' at span {}:{}", str::from_utf8(&src[span]).unwrap(), span.start, span.end)
+            println!("Index access on non-array in '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
+        ResError::InvalidArrayLength(span) => 
+            println!("Invalid array length expression in '{}' at span {}:{}.", str::from_utf8(&src[span]).unwrap(), span.start, span.end),
     }
 }

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::ptr;
+use std::range::Range;
 
 use crate::lexer::*;
 use crate::ast::*;
@@ -39,6 +40,11 @@ impl<'s, 'a, 'r> TreeWalker<'s, 'a, 'r>
         Ok(())
     }
 
+    fn get_type_size(&self, typ: &'a VarType<'s>) -> usize
+    {
+        Resolver::get_type_size(Range::<usize> {start: 0, end: 0}, typ, self.typ_sizes).unwrap()
+    }
+
     fn execute_block(&mut self, block: &ResBlock, base: usize) -> Result<JumpOut, RuntimeError>
     {
         let mut ret = JumpOut::None;
@@ -51,7 +57,7 @@ impl<'s, 'a, 'r> TreeWalker<'s, 'a, 'r>
             {
                 ResStmt::Decl(typ, init) => match init
                 {
-                    None => self.stack.push(Box::into_raw(vec![0; Resolver::get_type_size(typ, self.typ_sizes).unwrap()].into_boxed_slice())),
+                    None => self.stack.push(Box::into_raw(vec![0; self.get_type_size(typ)].into_boxed_slice())),
                     Some(expr) => self.eval(expr)?
                 },
                 ResStmt::FnDecl(_) | ResStmt::StructDecl(_) => (),
@@ -476,7 +482,7 @@ impl<'s, 'a, 'r> TreeWalker<'s, 'a, 'r>
                     self.eval(&args[1])?;
                     let idx = self.stack.pop().unwrap();
 
-                    let elem_size = Resolver::get_type_size(expr.typ, self.typ_sizes).unwrap();
+                    let elem_size = self.get_type_size(expr.typ);
 
                     match expr.cat
                     {

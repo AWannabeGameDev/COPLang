@@ -101,7 +101,7 @@ pub enum ResStmt<'s, 'a>
     Return(ResExpr<'s, 'a>)
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ResError<'s, 'a>
 {
     IdentifierNotFound(Range<usize>),
@@ -109,6 +109,7 @@ pub enum ResError<'s, 'a>
     ArgCountMismatch(Range<usize>),
     TypeMismatch(Range<usize>, &'a VarType<'s>),
     ExpectedLvalue(Range<usize>),
+    InvalidArrayLength(Range<usize>),
     Redecl(Range<usize>),
     OnlyInLoop(Range<usize>),
     OnlyInFunc(Range<usize>),
@@ -147,43 +148,44 @@ impl<'s, 'a> Resolver<'s, 'a>
         Self {loop_depth: 0, func_depth: 0, out_scope_limit: 0, return_type: &VarType::Unit, env_chain: Vec::new(), res_funcs: Vec::new(), typ_sizes, errors: Vec::new()}
     }
 
-    pub fn get_type_size(typ: &VarType<'s>, typ_sizes: &HashMap<&'a VarType<'s>, usize>) -> Option<usize>
+    pub fn get_type_size(span: Range<usize>, typ: &'a VarType<'s>, typ_sizes: &HashMap<&'a VarType<'s>, usize>) -> Result<usize, ResError<'s, 'a>>
     {
         match typ
         {
-            VarType::Array(elem_typ, count) => Self::get_type_size(elem_typ, typ_sizes).map(|size| size * count),
-            other => typ_sizes.get(other).copied()
+            VarType::Array(_, -1) => Err(ResError::InvalidArrayLength(span)),
+            VarType::Array(elem_typ, count) => Self::get_type_size(span, elem_typ, typ_sizes).map(|size| size * (*count as usize)),
+            other => typ_sizes.get(other).copied().ok_or(ResError::TypeNotFound(span, typ))
         }
     }
 
-    fn get_var_base_idx(&self, id: &[u8]) -> Option<(&'a VarType<'s>, isize)>
+    fn get_var_base_idx(&self, span: Range<usize>, id: &[u8]) -> Result<(&'a VarType<'s>, isize), ResError<'s, 'a>>
     {
         for env in self.env_chain.iter().rev().take(self.out_scope_limit)
         {
             let Some((var_typ, idx)) = env.vars.get(id) else {continue};
-            return Some((var_typ, *idx as isize - self.env_chain.last().unwrap().base as isize));
+            return Ok((var_typ, *idx as isize - self.env_chain.last().unwrap().base as isize));
         }
-        None
+        Err(ResError::IdentifierNotFound(span))
     }
 
-    fn get_fn_idx(&self, id: &[u8]) -> Option<&(Vec<&'a VarType<'s>>, &'a VarType<'s>, usize)>
+    fn get_fn_idx(&self, span: Range<usize>, id: &[u8]) -> Result<&(Vec<&'a VarType<'s>>, &'a VarType<'s>, usize), ResError<'s, 'a>>
     {
         for env in self.env_chain.iter().rev()
         {
             let Some(ret) = env.funcs.get(id) else {continue};
-            return Some(ret)
+            return Ok(ret)
         }
-        None
+        Err(ResError::IdentifierNotFound(span))
     }
 
-    fn get_fields(&self, struct_name: &[u8]) -> Option<&HashMap<&'s [u8], (&'a VarType<'s>, usize, usize)>>
+    fn get_fields(&self, struct_name: &[u8]) -> &HashMap<&'s [u8], (&'a VarType<'s>, usize, usize)>
     {
         for env in self.env_chain.iter().rev()
         {
             let Some(ret) = env.structs.get(struct_name) else {continue};
-            return Some(ret)
+            return ret
         }
-        None
+        unreachable!()
     }
 
     pub fn resolve(&mut self, block: &'a StmtBlock<'s>) -> ResBlock<'s, 'a>
@@ -239,7 +241,7 @@ impl<'s, 'a> Resolver<'s, 'a>
         {
             StmtEnum::Decl(typ, iden, init) => 
             {
-                if Self::get_type_size(typ, &self.typ_sizes).is_none() {return Err(ResError::TypeNotFound(stmt.span, typ))}
+                Self::get_type_size(stmt.span, typ, &self.typ_sizes)?;
 
                 let res_expr = match init
                 {
@@ -272,13 +274,13 @@ impl<'s, 'a> Resolver<'s, 'a>
                     Some(_) => Err(ResError::Redecl(stmt.span)),
                     None =>
                     {
-                        if Self::get_type_size(out_typ, &self.typ_sizes).is_none() {return Err(ResError::TypeNotFound(stmt.span, out_typ))}
+                        Self::get_type_size(stmt.span, out_typ, &self.typ_sizes)?;
 
                         let mut vars = HashMap::<&'s [u8], (&VarType, usize)>::new();
                         let mut param_typs = Vec::<&VarType>::new();
                         for (idx, (param_id, param_typ)) in params.iter().enumerate()
                         {
-                            if Self::get_type_size(param_typ, &self.typ_sizes).is_none() {return Err(ResError::TypeNotFound(stmt.span, param_typ))}
+                            Self::get_type_size(stmt.span, param_typ, &self.typ_sizes)?;
                             vars.insert(param_id, (param_typ, env.next_var_idx + idx));
                             param_typs.push(param_typ);
                         }
@@ -301,13 +303,13 @@ impl<'s, 'a> Resolver<'s, 'a>
             },
             StmtEnum::StructDecl(typ @ VarType::Struct(id), fields) =>
             {
-                if self.get_fields(id).is_some() {return Err(ResError::Redecl(stmt.span))}
+                if Self::get_type_size(stmt.span, typ, &self.typ_sizes).is_ok() {return Err(ResError::Redecl(stmt.span))}
 
                 let mut res_fields = HashMap::<&'s [u8], (&'a VarType<'s>, usize, usize)>::new();
                 let mut off = 0;
                 for (field_id, field_typ) in fields
                 {
-                    let Some(field_size) = Self::get_type_size(field_typ, &self.typ_sizes) else {return Err(ResError::TypeNotFound(stmt.span, field_typ))};
+                    let field_size = Self::get_type_size(stmt.span, field_typ, &self.typ_sizes)?;
                     if let Some(_) = res_fields.insert(field_id, (field_typ, off, field_size))
                         {return Err(ResError::DupField(stmt.span, field_id))}
                     off += field_size;
@@ -361,10 +363,10 @@ impl<'s, 'a> Resolver<'s, 'a>
                 Literal::Float(_) => {data = ResExprEnum::Literal(*x); typ = &VarType::Atom(AtomType::Float)},
                 Literal::Bool(_) => {data = ResExprEnum::Literal(*x); typ = &VarType::Atom(AtomType::Bool)}
             },
-            ExprEnum::Identifier(id) => match self.get_var_base_idx(id)
+            ExprEnum::Identifier(id) => match self.get_var_base_idx(expr.span, id)
             {
-                Some((typ, off)) => return Ok(ResExpr {data: ResExprEnum::StackBinding(off), typ, cat: ValCat::Rvalue}),
-                None => return Err(ResError::IdentifierNotFound(expr.span))
+                Ok((id_typ, off)) => {data = ResExprEnum::StackBinding(off); typ = id_typ},
+                Err(err) => return Err(err)
             },
             ExprEnum::Op(f, args) => match f
             {
@@ -490,8 +492,7 @@ impl<'s, 'a> Resolver<'s, 'a>
                 },
                 Operation::Func(id) =>
                 {
-                    let Some((param_typs, out_typ, res_idx)) = self.get_fn_idx(id) 
-                        else {return Err(ResError::IdentifierNotFound(expr.span))};
+                    let (param_typs, out_typ, res_idx) = self.get_fn_idx(expr.span, id)?;
                     if args.len() != param_typs.len() {return Err(ResError::ArgCountMismatch(expr.span))}
 
                     let mut res_args = Vec::<ResExpr>::new();
@@ -512,7 +513,7 @@ impl<'s, 'a> Resolver<'s, 'a>
 
                     let VarType::Struct(struct_name) = res_expr.typ 
                         else {return Err(ResError::NonStructFieldAccess(expr.span))};
-                    let Some((field_typ, off, size)) = self.get_fields(struct_name).unwrap().get(field)
+                    let Some((field_typ, off, size)) = self.get_fields(struct_name).get(field)
                         else {return Err(ResError::NoSuchField(expr.span, struct_name))};
 
                     typ = *field_typ;
@@ -544,10 +545,10 @@ impl<'s, 'a> Resolver<'s, 'a>
         let typ: &VarType;
         match &expr.data
         {
-            ExprEnum::Identifier(id) => match self.get_var_base_idx(id)
+            ExprEnum::Identifier(id) => match self.get_var_base_idx(expr.span, id)
             {
-                Some((typ, off)) => return Ok(ResExpr {data: ResExprEnum::StackBinding(off), typ, cat: ValCat::Lvalue}),
-                None => return Err(ResError::IdentifierNotFound(expr.span))
+                Ok((id_typ, off)) => {data = ResExprEnum::StackBinding(off); typ = id_typ},
+                Err(err) => return Err(err)
             },
             ExprEnum::Op(f, args) => match f
             {
@@ -585,7 +586,7 @@ impl<'s, 'a> Resolver<'s, 'a>
 
                     let VarType::Struct(struct_name) = res_expr.typ 
                         else {return Err(ResError::NonStructFieldAccess(expr.span))};
-                    let Some((field_typ, off, size)) = self.get_fields(struct_name).unwrap().get(field)
+                    let Some((field_typ, off, size)) = self.get_fields(struct_name).get(field)
                         else {return Err(ResError::NoSuchField(expr.span, struct_name))};
 
                     typ = *field_typ;

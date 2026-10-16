@@ -44,7 +44,7 @@ pub enum VarType<'s>
 {
     Atom(AtomType),
     Struct(&'s [u8]),
-    Array(Box<VarType<'s>>, usize),
+    Array(Box<VarType<'s>>, isize), // isize for returning -1 from parser in case of error (LALRPOP does not support error recovery from user-errors yet)
     Unit
 }
 
